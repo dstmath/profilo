@@ -61,6 +61,20 @@ class TraceFile(object):
         self.entries = entries
 
     @staticmethod
+    def __do64bitAddition(a, b):
+        val = a + b
+        if not -0x8000000000000000 <= val <= 0x7fffffffffffffff:
+            val = (val + (0x8000000000000000)) % (2 * (0x8000000000000000)) - 0x8000000000000000
+        return val
+
+    @staticmethod
+    def __do32bitAddition(a, b):
+        val = a + b
+        if not -0x80000000 <= val <= 0x7fffffff:
+            val = (val + (0x80000000)) % (2 * (0x80000000)) - 0x80000000
+        return val
+
+    @staticmethod
     def __delta_decode_entries(headers, delta_encoded):
         # Timestamp precision for all standard entry timestamps is in the
         # headers. Maximum precision is 9 for 10^-9, i.e. nanoseconds.
@@ -93,14 +107,13 @@ class TraceFile(object):
                 continue
 
             delta_entry = StandardEntry(
-                id=last_entry.id + entry.id,
+                id=TraceFile.__do32bitAddition(last_entry.id, entry.id),
                 type=entry.type,
-                timestamp=(last_entry.timestamp +
-                    (entry.timestamp * timestamp_multiplier)),
-                tid=last_entry.tid + entry.tid,
-                arg1=last_entry.arg1 + entry.arg1,
-                arg2=last_entry.arg2 + entry.arg2,
-                arg3=last_entry.arg3 + entry.arg3,
+                timestamp=TraceFile.__do64bitAddition(last_entry.timestamp, (entry.timestamp * timestamp_multiplier)),
+                tid=TraceFile.__do32bitAddition(last_entry.tid, entry.tid),
+                arg1=TraceFile.__do32bitAddition(last_entry.arg1, entry.arg1),
+                arg2=TraceFile.__do32bitAddition(last_entry.arg2, entry.arg2),
+                arg3=TraceFile.__do64bitAddition(last_entry.arg3, entry.arg3)
             )
             entries.append(delta_entry)
             last_entry = delta_entry
@@ -108,8 +121,9 @@ class TraceFile(object):
 
     @staticmethod
     def from_string(data):
+
         # Headers are separated from actual data by '\n\n'.
-        data = data.split("\n\n")
+        data = data.split("\n\n", 1)
 
         # Headers have a `key|value` format.
         headers = [x.split("|") for x in data[0].split("\n")]
@@ -118,7 +132,7 @@ class TraceFile(object):
 
         # Don't materialize the full list of delta-encoded entries,
         # generate them on demand.
-        gen_entries = (TraceEntry.construct(line) for line in data.split("\n"))
+        gen_entries = (TraceEntry.construct(line) for line in data.split("\n") if len(line.strip()) > 0)
         entries = TraceFile.__delta_decode_entries(headers, gen_entries)
 
         return TraceFile(headers=headers, entries=entries)

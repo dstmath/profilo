@@ -1,4 +1,4 @@
-// @generated SignedSource<<30570a72d3ef33b4377a12983f96b805>>
+// @generated SignedSource<<0eb955cc4ec52f3ad830015bc00335a7>>
 
 package com.facebook.profilo.entries;
 
@@ -91,6 +91,7 @@ public class EntryType {
   public static final int PROCESS_LIST = 84;
   public static final int IO_START = 85;
   public static final int IO_END = 86;
+  public static final int CPU_COUNTER = 87;
 
   public static final String[] NAMES = {
     "UNKNOWN_TYPE",
@@ -180,5 +181,6 @@ public class EntryType {
     "PROCESS_LIST",
     "IO_START",
     "IO_END",
+    "CPU_COUNTER",
   };
 }
