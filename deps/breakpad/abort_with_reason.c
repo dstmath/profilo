@@ -14,34 +14,11 @@
  * limitations under the License.
  */
 
-#include <cppdistract/dso.h>
+#include "abort_with_reason.h"
+#include <stdlib.h>
+#include <fb/log.h>
 
-namespace facebook {
-
-using namespace cppdistract;
-
-/**
- * These methods return dso objects for the libraries they're named after.
- */
-
-dso const& libart();
-
-dso const& libcxx();
-
-dso const& libc();
-
-dso const& libnativehelper();
-
-dso const& libm();
-
-dso const& libhwui();
-
-dso const& libutils();
-
-dso const& libandroid();
-
-dso const& libcutils();
-
-dso const& libandroid_runtime();
-
-} // namespace facebook
+void abortWithReasonImpl(const char* reason) {
+  FBLOGE(reason);
+  abort();
+}

@@ -14,34 +14,21 @@
  * limitations under the License.
  */
 
-#include <cppdistract/dso.h>
+#pragma once
 
-namespace facebook {
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-using namespace cppdistract;
+#define __ABORT_MESSAGE_PREFIX(file, line)  file ":" line " "
+#define __TO_STR_INDIRECTED(x)  #x
+#define __TO_STR(x) __TO_STR_INDIRECTED(x)
 
-/**
- * These methods return dso objects for the libraries they're named after.
- */
+#define abortWithReason(msg)  abortWithReasonImpl(__ABORT_MESSAGE_PREFIX(__FILE__, __TO_STR(__LINE__)) msg)
 
-dso const& libart();
+__attribute__((noreturn))
+void abortWithReasonImpl(const char* reason);
 
-dso const& libcxx();
-
-dso const& libc();
-
-dso const& libnativehelper();
-
-dso const& libm();
-
-dso const& libhwui();
-
-dso const& libutils();
-
-dso const& libandroid();
-
-dso const& libcutils();
-
-dso const& libandroid_runtime();
-
-} // namespace facebook
+#ifdef __cplusplus
+} // extern "C"
+#endif

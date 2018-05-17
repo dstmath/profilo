@@ -17,6 +17,7 @@ headers:
 - museum/6.0.1/art/runtime/runtime.h
 - museum/6.0.1/art/runtime/stack_map.h
 - museum/6.0.1/art/runtime/thread.h
+- museum/6.0.1/art/runtime/thread_list.h
 - museum/6.0.1/art/runtime/utf.h
 - new
 
@@ -201,6 +202,23 @@ namespaces:
       mangledNames:
       - _ZN3art11ClassLinker26FindClassInPathClassLoaderERNS_33ScopedObjectAccessAlreadyRunnableEPNS_6ThreadEPKcjNS_6HandleINS_6mirror11ClassLoaderEEEPPNS8_5ClassE
 
+    - symbolName: CreateArrayClass
+      params:
+      - Thread*
+      - char const*
+      - size_t
+      - Handle<mirror::ClassLoader>
+      returnType: mirror::Class*
+      mangledNames:
+      - _ZN3art11ClassLinker16CreateArrayClassEPNS_6ThreadEPKcjNS_6HandleINS_6mirror11ClassLoaderEEE
+
+    - symbolName: FindPrimitiveClass
+      params:
+      - char
+      returnType: mirror::Class*
+      mangledNames:
+      - _ZN3art11ClassLinker18FindPrimitiveClassEc
+
   - className: IndirectReferenceTable
     symbols:
     - symbolName: Add
@@ -251,6 +269,10 @@ namespaces:
       cvFlags: const
       mangledNames:
       - _ZNK3art7Runtime25RecordWriteFieldReferenceEPNS_6mirror6ObjectENS_12MemberOffsetES3_b
+    - symbolName: GetPreAllocatedNoClassDefFoundError
+      returnType: mirror::Throwable*
+      mangledNames:
+      - _ZN3art7Runtime35GetPreAllocatedNoClassDefFoundErrorEv
 
   - className: Thread
     symbols:
@@ -340,6 +362,20 @@ namespaces:
       cvFlags: const
       mangledNames:
       - _ZNK3art12StackVisitor13GetThisObjectEv
+
+  - className: ThreadList
+    symbols:
+    - symbolName: ResumeAll
+      returnType: void
+      mangledNames:
+      - _ZN3art10ThreadList9ResumeAllEv
+    - symbolName: SuspendAll
+      returnType: void
+      params:
+      - char const*
+      - bool
+      mangledNames:
+      - _ZN3art10ThreadList10SuspendAllEPKcb
 
   # Special set: Unattached methods. Give them an empty className, and poof.
   - className:

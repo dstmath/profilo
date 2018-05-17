@@ -1,3 +1,4 @@
+# BUILD FILE SYNTAX: SKYLARK
 load("//buck_imports:profilo_path.bzl", "profilo_path")
 load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
 
@@ -56,6 +57,9 @@ fb_xplat_cxx_library(
         "-Wall",
     ],
     force_static = True,
+    tests = [
+        profilo_path("cpp/util/test:procfs"),
+    ],
     visibility = [
         profilo_path("..."),
     ],

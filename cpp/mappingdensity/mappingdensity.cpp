@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <regex>
+#include <sstream>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <system_error>
@@ -38,7 +39,7 @@ void dumpMappingDensities(
       continue;
     }
 
-    size_t sz = memorymap_vma_end(vma) - memorymap_vma_end(vma);
+    size_t sz = memorymap_vma_end(vma) - memorymap_vma_start(vma);
     if (sz > maxSize) {
       maxSize = sz;
     }
@@ -46,7 +47,9 @@ void dumpMappingDensities(
 
   size_t const pageSize = sysconf(_SC_PAGESIZE);
   std::vector<uint8_t> buf(maxSize / pageSize + 1);
-  std::ofstream os(outFile + "/mincore_" + dumpName);
+  std::stringstream ss;
+  ss << outFile << "/mincore_" << dumpName << "_" << getpid();
+  std::ofstream os(ss.str());
   for (struct memorymap_vma const* vma = memorymap_first_vma(maps);
        vma != nullptr;
        vma = memorymap_vma_next(vma)) {

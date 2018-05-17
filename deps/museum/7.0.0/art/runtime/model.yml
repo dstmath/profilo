@@ -18,6 +18,7 @@ headers:
 - museum/7.0.0/art/runtime/jni_env_ext.h
 - museum/7.0.0/art/runtime/runtime.h
 - museum/7.0.0/art/runtime/thread.h
+- museum/7.0.0/art/runtime/thread_list.h
 - museum/7.0.0/art/runtime/utf.h
 - museum/7.0.0/art/runtime/stack.h
 - new
@@ -109,6 +110,22 @@ namespaces:
       returnType: bool
       mangledNames:
       - _ZN3art11ClassLinker26FindClassInPathClassLoaderERNS_33ScopedObjectAccessAlreadyRunnableEPNS_6ThreadEPKcjNS_6HandleINS_6mirror11ClassLoaderEEEPPNS8_5ClassE
+    - symbolName: CreateArrayClass
+      params:
+      - Thread*
+      - char const*
+      - size_t
+      - Handle<mirror::ClassLoader>
+      returnType: mirror::Class*
+      mangledNames:
+      - _ZN3art11ClassLinker16CreateArrayClassEPNS_6ThreadEPKcjNS_6HandleINS_6mirror11ClassLoaderEEE
+    - symbolName: FindPrimitiveClass
+      params:
+      - char
+      returnType: mirror::Class*
+      mangledNames:
+      - _ZN3art11ClassLinker18FindPrimitiveClassEc
+
   - className: ConditionVariable
     symbols:
     - symbolName: Wait
@@ -366,6 +383,20 @@ namespaces:
     - symbolName: ~MemMap
       mangledNames:
       - _ZN3art6MemMapD1Ev
+
+  - className: ThreadList
+    symbols:
+    - symbolName: ResumeAll
+      returnType: void
+      mangledNames:
+      - _ZN3art10ThreadList9ResumeAllEv
+    - symbolName: SuspendAll
+      returnType: void
+      params:
+      - char const*
+      - bool
+      mangledNames:
+      - _ZN3art10ThreadList10SuspendAllEPKcb
 
   # unattached methods
   - className:
