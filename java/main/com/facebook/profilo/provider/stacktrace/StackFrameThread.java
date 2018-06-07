@@ -21,24 +21,18 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Process;
 import android.util.Log;
+import com.facebook.profilo.core.BaseTraceProvider;
 import com.facebook.profilo.core.Identifiers;
 import com.facebook.profilo.core.ProfiloConstants;
 import com.facebook.profilo.core.ProvidersRegistry;
-import com.facebook.profilo.core.TraceOrchestrator;
 import com.facebook.profilo.entries.EntryType;
 import com.facebook.profilo.ipc.TraceContext;
 import com.facebook.profilo.logger.Logger;
 import com.facebook.proguard.annotations.DoNotStrip;
-import com.facebook.soloader.SoLoader;
-import java.io.File;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
-public final class StackFrameThread implements TraceOrchestrator.TraceProvider {
-
-  static {
-    SoLoader.loadLibrary("profilo_stacktrace");
-  }
+public final class StackFrameThread extends BaseTraceProvider {
 
   public static final int PROVIDER_STACK_FRAME = ProvidersRegistry.newProvider("stack_trace");
   public static final int PROVIDER_WALL_TIME_STACK_TRACE =
@@ -56,6 +50,7 @@ public final class StackFrameThread implements TraceOrchestrator.TraceProvider {
   @Nullable private TraceContext mSavedTraceContext;
 
   public StackFrameThread(Context context) {
+    super("profilo_stacktrace");
     Context applicationContext = context.getApplicationContext();
     if (applicationContext == null && context instanceof Application) {
       // When the context is passed in from com.facebook.katana.app.FacebookApplication
@@ -141,10 +136,8 @@ public final class StackFrameThread implements TraceOrchestrator.TraceProvider {
   @SuppressLint({
     "BadMethodUse-java.lang.Thread.start",
   })
-  public synchronized void onEnable(final TraceContext context, File extraDataFolder) {
-    if (mSavedTraceContext != null) {
-      return;
-    }
+  protected void enable() {
+    final TraceContext context = getEnablingTraceContext();
     // Avoid starting a thread if there's nothing to do.
     if (providersToTracers(context.enabledProviders) == 0) {
       return;
@@ -177,12 +170,9 @@ public final class StackFrameThread implements TraceOrchestrator.TraceProvider {
   }
 
   @Override
-  public synchronized void onDisable(TraceContext context, File extraDataFolder) {
+  protected void disable() {
     if (!mEnabled) {
       mProfilerThread = null;
-      return;
-    }
-    if (context != mSavedTraceContext) {
       return;
     }
     mSavedTraceContext = null;
@@ -196,6 +186,11 @@ public final class StackFrameThread implements TraceOrchestrator.TraceProvider {
       }
       mProfilerThread = null;
     }
+  }
+
+  @Override
+  protected int getSupportedProviders() {
+    return PROVIDER_NATIVE_STACK_TRACE | PROVIDER_STACK_FRAME | PROVIDER_WALL_TIME_STACK_TRACE;
   }
 
   @DoNotStrip

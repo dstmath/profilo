@@ -14,31 +14,22 @@
  * limitations under the License.
  */
 
-package com.facebook.profilo.provider.atrace;
+#pragma once
 
-import com.facebook.profilo.core.BaseTraceProvider;
-import com.facebook.profilo.core.ProvidersRegistry;
+#include <stdint.h>
 
-public final class SystraceProvider extends BaseTraceProvider {
+namespace facebook { namespace linker {
 
-  public static final int PROVIDER_ATRACE = ProvidersRegistry.newProvider("other");
+void* create_trampoline(void* hook, void* chained);
 
-  public SystraceProvider() {
-    super("profilo_atrace");
-  }
+} } // namespace facebook::linker
 
-  @Override
-  protected void enable() {
-    Atrace.enableSystrace();
-  }
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-  @Override
-  protected void disable() {
-    Atrace.restoreSystrace();
-  }
+void* get_chained_plt_method();
 
-  @Override
-  protected int getSupportedProviders() {
-    return PROVIDER_ATRACE;
-  }
+#ifdef __cplusplus
 }
+#endif

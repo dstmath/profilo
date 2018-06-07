@@ -14,15 +14,22 @@
  * limitations under the License.
  */
 
-#pragma once
+#include <profilo/ExternalApiGlue.h>
 
-namespace facebook {
-namespace profilo {
-namespace util {
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-// Global symbol lookup.
-void* resolve_symbol(const char* name);
+#define PROFILO_EXPORT __attribute__((visibility ("default")))
 
-} // util
-} // profilo
-} // facebook
+PROFILO_EXPORT ProfiloApi profilo_api_int {
+  .mark_start = nullptr,
+  .mark_end = nullptr,
+  .log_classload_start = nullptr,
+  .log_classload_end = nullptr,
+  .log_classload_failed = nullptr,
+};
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

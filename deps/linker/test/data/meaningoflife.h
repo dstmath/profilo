@@ -14,6 +14,23 @@
  * limitations under the License.
  */
 
- #pragma once
+#pragma once
 
- extern int meaning_of_life;
+extern int meaning_of_life;
+
+struct large {
+  double a;
+  int b;
+  double c;
+  char const* d;
+  char e, f, g;
+};
+
+double nice1(int one);
+int nice2(int one, double two);
+
+#define EVIL2_MUNGE_CALLBACK_INT(initial)     (-(initial))
+#define EVIL3_MUNGE_CALLBACK_INT(a, b, c)     (((a) + (b)) * (c))
+void evil1(struct large one, int two, void (*cb)(struct large*, int, void*), void* unk);
+void* evil2(int one, struct large two, void (*cb)(struct large*, int, void*), void* unk);
+struct large evil3(int one, int two, int three, struct large four, void (*cb)(struct large*, int, void*), void* unk);

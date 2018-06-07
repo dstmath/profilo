@@ -18,46 +18,45 @@
 
 #include <unistd.h>
 
-#include <util/SoUtils.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 namespace {
 
-ProfiloApi* resolve_api_int() {
-  return reinterpret_cast<ProfiloApi*>(
-    facebook::profilo::util::resolve_symbol("profilo_api_int"));
-}
-
-ProfiloApi* get_api_int() {
-  static auto api = resolve_api_int();
-  return api;
-}
-
 void api_mark_start(const char* provider, const char* name) {
-  auto api = get_api_int();
-  if (api == nullptr) {
+  if (profilo_api_int.mark_start == nullptr) {
     return;
   }
-  api->mark_start(provider, name);
+  profilo_api_int.mark_start(provider, name);
 }
 
 void api_mark_end(const char* provider) {
-  auto api = get_api_int();
-  if (api == nullptr) {
+  if (profilo_api_int.mark_end == nullptr) {
     return;
   }
-  api->mark_end(provider);
+  profilo_api_int.mark_end(provider);
 }
 
-void api_log_classload(const char* provider, int64_t classid) {
-  auto api = get_api_int();
-  if (api == nullptr) {
+void api_log_classload_start(const char* provider) {
+  if (profilo_api_int.log_classload_start == nullptr) {
     return;
   }
-  api->log_classload(provider, classid);
+  profilo_api_int.log_classload_start(provider);
+}
+
+void api_log_classload_end(const char* provider, int64_t classid) {
+  if (profilo_api_int.log_classload_end == nullptr) {
+    return;
+  }
+  profilo_api_int.log_classload_end(provider, classid);
+}
+
+void api_log_classload_failed(const char* provider) {
+  if (profilo_api_int.log_classload_failed == nullptr) {
+    return;
+  }
+  profilo_api_int.log_classload_failed(provider);
 }
 
 } // namespace anonymous
@@ -66,7 +65,9 @@ ProfiloApi* profilo_api() {
   static ProfiloApi api {
     .mark_start = &api_mark_start,
     .mark_end = &api_mark_end,
-    .log_classload = &api_log_classload,
+    .log_classload_start = &api_log_classload_start,
+    .log_classload_end = &api_log_classload_end,
+    .log_classload_failed = &api_log_classload_failed,
   };
   return &api;
 }
