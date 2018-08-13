@@ -17,10 +17,9 @@
 #include <jni.h>
 #include <fbjni/fbjni.h>
 #include <fb/xplat_init.h>
+#include <sigmuxsetup/sigmuxsetup.h>
 
-#include "profiler/ArtCompatibility_511.h"
-#include "profiler/ArtCompatibility_601.h"
-#include "profiler/ArtCompatibility_700.h"
+#include "profiler/ArtCompatibility.h"
 #include "SamplingProfiler.h"
 #include "util/common.h"
 
@@ -39,6 +38,8 @@ namespace {
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
   return facebook::xplat::initialize(vm, [] {
+    sigmuxsetup::EnsureSigmuxOverridesArtFaultHandler();
+
     fbjni::registerNatives(CPUProfilerType,
       {
         makeNativeMethod("nativeInitialize", "(I)Z", profiler::initialize),
@@ -55,8 +56,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
           getSystemClockTickIntervalMs),
       });
 
-    artcompat::registerNatives_5_1_1();
-    artcompat::registerNatives_6_0_1();
-    artcompat::registerNatives_7_0_0();
+    artcompat::registerNatives();
   });
 }

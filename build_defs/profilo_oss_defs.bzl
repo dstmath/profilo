@@ -1,5 +1,6 @@
 """Provides OSS compatibile macros."""
 
+load("//build_defs:glob_defs.bzl", "subdir_glob")
 load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
 
 IS_OSS_BUILD = True
@@ -16,6 +17,9 @@ def profilo_oss_java_library(**kwargs):
     """Delegates to the native java_library rule."""
     native.java_library(**kwargs)
 
+def profilo_oss_only_java_library(**kwargs):
+    profilo_oss_java_library(**kwargs)
+
 def profilo_oss_maven_library(
         name,
         group,
@@ -28,6 +32,7 @@ def profilo_oss_maven_library(
     """
     Creates remote_file and prebuilt_jar rules for a maven artifact.
     """
+    _ignore = scope
     remote_file_name = "{}-remote".format(name)
     remote_file(
         name = remote_file_name,
@@ -64,7 +69,9 @@ def setup_profilo_oss_xplat_cxx_library():
         ]),
         compiler_flags = [
             "-fexceptions",
+            "-fno-omit-frame-pointer",
             "-frtti",
+            "-ffunction-sections",
         ],
         exported_platform_headers = [
             (
@@ -78,6 +85,18 @@ def setup_profilo_oss_xplat_cxx_library():
             (
                 "^android",
                 ["-llog"],
+            ),
+            # There is a bug in ndk that would make linking fail for android log
+            # lib. This is a workaround for older ndk, because newer ndk would
+            # use a linker without bug.
+            # See https://github.com/android-ndk/ndk/issues/556
+            (
+                "^android-arm64",
+                ["-fuse-ld=gold"],
+            ),
+            (
+                "^android-x86",
+                ["-latomic"],
             ),
         ],
         platform_srcs = [

@@ -44,7 +44,7 @@ public class ArtCompatibility {
     }
   }
 
-  public static boolean isCompatible(Context context) {
+  public static boolean isCompatible(Context context, boolean useAlternatives) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
       return false;
     }
@@ -61,21 +61,39 @@ public class ArtCompatibility {
       if (file.exists()) {
         result = readCompatFile(file);
       } else {
-        switch (Build.VERSION.RELEASE) {
-          case "7.0":
-            result = nativeCheckArt7_0();
-            break;
-          case "6.0":
-          case "6.0.1":
-            result = nativeCheckArt6_0();
-            break;
-          case "5.1":
-          case "5.1.0":
-          case "5.1.1":
-            result = nativeCheckArt5_1();
-            break;
-          default:
-            result = false;
+        if (useAlternatives) {
+          switch (Build.VERSION.RELEASE) {
+            case "7.1.2":
+              result = nativeCheck(CPUProfiler.TRACER_ART_UNWINDC_7_1_2);
+              break;
+            case "7.1.1":
+              result = nativeCheck(CPUProfiler.TRACER_ART_UNWINDC_7_1_1);
+              break;
+            case "7.1":
+            case "7.1.0":
+              result = nativeCheck(CPUProfiler.TRACER_ART_UNWINDC_7_1_0);
+              break;
+            case "7.0":
+            case "7.0.0":
+              result = nativeCheck(CPUProfiler.TRACER_ART_UNWINDC_7_0_0);
+              break;
+            case "6.0":
+            case "6.0.1":
+              result = nativeCheck(CPUProfiler.TRACER_ART_UNWINDC_6_0);
+              break;
+          }
+        } else {
+          switch (Build.VERSION.RELEASE) {
+            case "7.0":
+              result = nativeCheck(CPUProfiler.TRACER_ART_7_0);
+              break;
+            case "6.0":
+            case "6.0.1":
+              result = nativeCheck(CPUProfiler.TRACER_ART_6_0);
+              break;
+            default:
+              result = false;
+          }
         }
         writeCompatFile(file, result);
       }
@@ -107,7 +125,6 @@ public class ArtCompatibility {
     }
   }
 
-  @DoNotStrip private static native boolean nativeCheckArt7_0();
-  @DoNotStrip private static native boolean nativeCheckArt6_0();
-  @DoNotStrip private static native boolean nativeCheckArt5_1();
+  @DoNotStrip
+  private static native boolean nativeCheck(int tracer);
 }

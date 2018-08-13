@@ -27,13 +27,18 @@
 #include <unistd.h>
 #include <chrono>
 
+#include <fb/Build.h>
 #include <fbjni/fbjni.h>
 #include <fb/log.h>
 #include <sigmux.h>
 
-#include "profiler/ArtTracer_511.h"
 #include "profiler/ArtTracer_601.h"
 #include "profiler/ArtTracer_700.h"
+#include "profiler/ArtUnwindcTracer_600.h"
+#include "profiler/ArtUnwindcTracer_700.h"
+#include "profiler/ArtUnwindcTracer_710.h"
+#include "profiler/ArtUnwindcTracer_711.h"
+#include "profiler/ArtUnwindcTracer_712.h"
 #include "DalvikTracer.h"
 
 #if HAS_NATIVE_TRACER
@@ -74,18 +79,17 @@ static void throw_errno(const char* error) {
   throw std::system_error(errno, std::system_category(), error);
 }
 
-static bool threadIsUnwinding() {
-  auto& profileState = getProfileState();
+static bool threadIsUnwinding(ProfileState const& profileState) {
   return pthread_getspecific(profileState.threadIsProfilingKey) != nullptr;
 }
 
 sigmux_action sigcatch_handler(struct sigmux_siginfo* siginfo, void* handler_data) {
-  if (!threadIsUnwinding()) {
+  ProfileState& profileState = *reinterpret_cast<ProfileState*>(handler_data);
+  if (!threadIsUnwinding(profileState)) {
     return SIGMUX_CONTINUE_SEARCH;
   }
 
   int32_t tid = threadID();
-  auto& profileState = getProfileState();
 
   // We know the thread that raised the signal was unwinding, find its slot and
   // jump to the saved state there.
@@ -126,18 +130,14 @@ void maybeSignalReader(bool stackCollected) {
   }
 }
 
-void sigprof_handler(int signum, siginfo_t* siginfo, void* ucontext) {
-  if (threadIsUnwinding()) {
+sigmux_action sigprof_handler(struct sigmux_siginfo* siginfo, void* handler_data) {
+  ProfileState& profileState = *reinterpret_cast<ProfileState*>(handler_data);
+
+  if (threadIsUnwinding(profileState)) {
     // Jump out, we're already in this handler.
-    //
-    // This shouldn't be possible but bugs in sigmux have made us cautious.
-    // Even we don't use SA_NODEFER, there are too many interacting layers and
-    // the masks can get confused, especially when using a
-    // clock to send signals.
-    return;
+    return SIGMUX_CONTINUE_EXECUTION;
   }
 
-  auto& profileState = getProfileState();
   pthread_setspecific(profileState.threadIsProfilingKey, (void*) 1);
 
   auto tid = threadID();
@@ -177,7 +177,7 @@ void sigprof_handler(int signum, siginfo_t* siginfo, void* ucontext) {
     // Can finally occupy the slot
     if (sigsetjmp(slot.sig_jmp_buf, 1) == 0) {
       bool success = tracerEntry.second->collectStack(
-        (ucontext_t*) ucontext,
+        (ucontext_t*) siginfo->context,
         slot.frames,
         slot.depth,
         (uint8_t)MAX_STACK_DEPTH);
@@ -210,27 +210,17 @@ void sigprof_handler(int signum, siginfo_t* siginfo, void* ucontext) {
   }
 
   pthread_setspecific(profileState.threadIsProfilingKey, (void*) 0);
-
-  struct sigaction& oldact = profileState.oldSigprofAct;
-  if (oldact.sa_sigaction != nullptr || oldact.sa_handler != nullptr) {
-    if (oldact.sa_flags & SA_SIGINFO) {
-      oldact.sa_sigaction(signum, siginfo, ucontext);
-    } else {
-      oldact.sa_handler(signum);
-    }
-  }
+  return SIGMUX_CONTINUE_EXECUTION;
 }
+
 
 void initSignalHandlers() {
   //
-  // The setup is as follows:
+  // Register a handler for SIGPROF, trusting that sigmux will internally use
+  // SA_RESTART.
   //
-  // 1) We use sigmux_sigaction to register a SIGPROF handler. This handler
-  // sets sigaction.sa_mask to block everything except the signals in
-  // kAccessSignals.
-  //
-  // 2) We use sigmux_register to handle the signals in kAccessSignals via the
-  // sigmux defaults.
+  // Also, register a handler for SIGSEGV and SIGBUS, so that we can safely
+  // jump away in the case of a crash in our SIGPROF handler.
   //
 
   // Signal to be be handled when collecting stack traces
@@ -251,28 +241,27 @@ void initSignalHandlers() {
     }
   }
 
-  struct sigaction sigprofact{};
-  sigprofact.sa_sigaction = &sigprof_handler;
-  memcpy(&sigprofact.sa_mask, &sigset, sizeof(sigset));
-  //
-  // SA_RESTART instructs the kernel to restart interrupted syscalls,
-  // if possible. SA_ONSTACK lets us use the alt stack, if one is registered.
-  //
-  // ... this is all in vain since sigmux_sigaction ignores sa_flags if the
-  // signal is already registered (and we can't guarantee we're the first ones
-  // to register SIGPROF). Regardless, let's be API-compliant.
-  //
-  sigprofact.sa_flags = SA_RESTART | SA_SIGINFO | SA_ONSTACK;
-
   auto& state = getProfileState();
-  if (sigmux_sigaction(SIGPROF, &sigprofact, &state.oldSigprofAct)) {
-    std::string msg = "Couldn't register SIGPROF handler: ";
-    msg += strerror(errno);
-    throw_errno(msg.c_str());
+
+  if(sigmux_init(SIGPROF)) {
+    throw_errno("Couldn't init sigmux for SIGPROF");
+  }
+
+  sigset_t prof_set;
+  if (sigemptyset(&prof_set)) {
+    throw_errno("sigemptyset");
+  }
+
+  if (sigaddset(&prof_set, SIGPROF)) {
+    throw_errno("sigaddset");
+  }
+
+  if (!sigmux_register(&prof_set, sigprof_handler, &state, 0)) {
+    throw_errno("sigmux_register for SIGPROF");
   }
 
   // register handler to ignore potentially sigsegv/sigbus
-  if(sigemptyset(&sigset)) {
+  if (sigemptyset(&sigset)) {
     throw_errno("Couldn't sigemptyset");
   }
 
@@ -289,7 +278,7 @@ void initSignalHandlers() {
     }
   }
 
-  if (!sigmux_register(&sigset, sigcatch_handler, NULL, 0)) {
+  if (!sigmux_register(&sigset, sigcatch_handler, &state, 0)) {
     FBLOGE("Failed to register sigmux: %s", strerror(errno));
     throw_errno("Couldn't register sigmux for SIGSEGV/SIGBUS signal jail");
   }
@@ -364,12 +353,33 @@ bool initialize(
     profileState.tracersMap[tracers::ART_6_0] = std::make_unique<Art6Tracer>();
   }
 
-  if (available_tracers & tracers::ART_5_1) {
-    profileState.tracersMap[tracers::ART_5_1] = std::make_unique<Art51Tracer>();
+  if (available_tracers & tracers::ART_UNWINDC_6_0) {
+    profileState.tracersMap[tracers::ART_UNWINDC_6_0] =
+      std::make_unique<ArtUnwindcTracer60>();
   }
 
   if (available_tracers & tracers::ART_7_0) {
     profileState.tracersMap[tracers::ART_7_0] = std::make_unique<Art70Tracer>();
+  }
+
+  if (available_tracers & tracers::ART_UNWINDC_7_0_0) {
+    profileState.tracersMap[tracers::ART_UNWINDC_7_0_0] =
+        std::make_unique<ArtUnwindcTracer700>();
+  }
+
+  if (available_tracers & tracers::ART_UNWINDC_7_1_0) {
+    profileState.tracersMap[tracers::ART_UNWINDC_7_1_0] =
+        std::make_unique<ArtUnwindcTracer710>();
+  }
+
+  if (available_tracers & tracers::ART_UNWINDC_7_1_1) {
+    profileState.tracersMap[tracers::ART_UNWINDC_7_1_1] =
+        std::make_unique<ArtUnwindcTracer711>();
+  }
+
+  if (available_tracers & tracers::ART_UNWINDC_7_1_2) {
+    profileState.tracersMap[tracers::ART_UNWINDC_7_1_2] =
+        std::make_unique<ArtUnwindcTracer712>();
   }
 
   initSignalHandlers();

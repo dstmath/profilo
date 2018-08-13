@@ -35,8 +35,12 @@ import com.facebook.profilo.logger.LoggerCallbacks;
 import com.facebook.profilo.logger.Trace;
 import com.facebook.profilo.writer.NativeTraceWriterCallbacks;
 import java.io.File;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,7 +64,8 @@ public final class TraceOrchestrator
           BackgroundUploadService.BackgroundUploadListener,
           TraceControl.TraceControlListener,
           LoggerCallbacks {
-    void onTraceFlushed(File trace);
+    void onTraceFlushed(File trace, long traceId);
+
     void onTraceFlushedDoFileAnalytics(
         int totalErrors,
         int trimmedFromCount,
@@ -122,7 +127,8 @@ public final class TraceOrchestrator
   public static final String MAIN_PROCESS_NAME = "main";
 
   private static final String TAG = "Profilo/TraceOrchestrator";
-  private static final int RING_BUFFER_SIZE = 5000;
+  private static final int RING_BUFFER_SIZE_MAIN_PROCESS = 5000;
+  private static final int RING_BUFFER_SIZE_SECONDARY_PROCESS = 1000;
   private boolean mHasReadFromBridge = false;
 
   private final HashMap<Long, Trace> mTraces;
@@ -226,7 +232,12 @@ public final class TraceOrchestrator
       folder = mFileManager.getFolder();
 
       // using process name as a unique prefix for each process
-      Logger.initialize(RING_BUFFER_SIZE, folder, processName, this, this);
+      Logger.initialize(
+          mIsMainProcess ? RING_BUFFER_SIZE_MAIN_PROCESS : RING_BUFFER_SIZE_SECONDARY_PROCESS,
+          folder,
+          processName,
+          this,
+          this);
 
       // Complete a normal config update; this is somewhat wasteful but ensures consistency
       performConfigTransition(initialConfig);
@@ -508,6 +519,11 @@ public final class TraceOrchestrator
     File parent = logFile.getParentFile();
     File uploadFile;
     if (ZipHelper.shouldZipDirectory(parent)) {
+      File parentWithNameUsingConvention =
+          new File(parent.getParent(), getTimestamp() + "-" + traceId);
+      if (parent.renameTo(parentWithNameUsingConvention)) {
+        parent = parentWithNameUsingConvention;
+      }
       uploadFile = ZipHelper.getCompressedFile(parent, ZipHelper.ZIP_SUFFIX + ZipHelper.TMP_SUFFIX);
       ZipHelper.deleteDirectory(parent);
     } else {
@@ -517,7 +533,7 @@ public final class TraceOrchestrator
       return;
     }
 
-    uploadTrace(logFile, uploadFile, parent, trace.getFlags());
+    uploadTrace(logFile, uploadFile, parent, trace.getFlags(), traceId);
   }
 
   @Override
@@ -569,10 +585,11 @@ public final class TraceOrchestrator
       ZipHelper.deleteDirectory(parent);
       return;
     }
-    uploadTrace(logFile, logFile, parent, trace.getFlags());
+    uploadTrace(logFile, logFile, parent, trace.getFlags(), traceId);
   }
 
-  private void uploadTrace(File logFile, File uploadFile, File parent, int traceFlags) {
+  private void uploadTrace(
+      File logFile, File uploadFile, File parent, int traceFlags, long traceId) {
     FileManager.FileManagerStatistics fStats;
     synchronized (this) {
       // Manual traces are untrimmable, everything else can be cleaned up
@@ -583,13 +600,19 @@ public final class TraceOrchestrator
     }
     ZipHelper.deleteDirectory(parent);
 
-    mListenerManager.onTraceFlushed(logFile);
+    mListenerManager.onTraceFlushed(logFile, traceId);
     // This is as good a time to do some analytics as any.
     mListenerManager.onTraceFlushedDoFileAnalytics(
         fStats.getTotalErrors(),
         fStats.getTrimmedDueToCount(),
         fStats.getTrimmedDueToAge(),
         fStats.getAddedFilesToUpload());
+  }
+
+  private static String getTimestamp() {
+    Date date = new Date();
+    DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH-mm-ss", Locale.getDefault());
+    return dateFormat.format(date);
   }
 
   @Override

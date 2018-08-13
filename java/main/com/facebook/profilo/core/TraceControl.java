@@ -334,10 +334,7 @@ final public class TraceControl {
       // manual and in-memory traces should not time out
       timeout = Integer.MAX_VALUE;
     }
-    // Do not trigger trace writer for memory only trace
-    if ((flags & Trace.FLAG_MEMORY_ONLY) == 0) {
-      Logger.postCreateTrace(nextContext.traceId, flags, timeout);
-    }
+    Logger.postCreateTrace(nextContext.traceId, flags, timeout);
 
     synchronized (this) {
       ensureHandlerInitialized();
@@ -467,6 +464,15 @@ final public class TraceControl {
       return null;
     }
     return ctx.encodedTraceId;
+  }
+
+  @Nullable
+  public long getCurrentTraceIdByTrigger(int controller, int intContext, Object context) {
+    TraceContext ctx = findCurrentTraceByContext(controller, intContext, context);
+    if (ctx == null) {
+      return 0;
+    }
+    return ctx.traceId;
   }
 
   /** Return some context about the triggering controller and context. */

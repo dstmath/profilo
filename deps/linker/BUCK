@@ -10,9 +10,13 @@ profilo_oss_cxx_library(
     ),
     header_namespace = "linker",
     exported_headers = glob(["*.h"]),
+    compiler_flags = [
+        "-std=c++11",
+        "-fexceptions",
+    ],
     platform_preprocessor_flags = [
         (
-            "android-arm",
+            "android-(arm|armv7)$",
             ["-D__ARM__"],
         ),
         (
