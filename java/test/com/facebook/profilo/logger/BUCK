@@ -1,6 +1,6 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//build_defs:fb_core_android_library.bzl", "fb_core_android_library")
-load("//buck_imports:profilo_path.bzl", "profilo_path")
+load("//tools/build_defs:fb_native_wrapper.bzl", "fb_native")
+load("//tools/build_defs/android:fb_core_android_library.bzl", "fb_core_android_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
 
 fb_core_android_library(
     name = "utils",
@@ -20,7 +20,7 @@ fb_core_android_library(
     ],
 )
 
-robolectric_test(
+fb_native.robolectric_test(
     name = "logger",
     srcs = glob(["*Test.java"]),
     contacts = ["oncall+loom@xmail.facebook.com"],
@@ -33,5 +33,6 @@ robolectric_test(
         profilo_path("deps/third-party/java/assertj:assertj-core"),
         profilo_path("deps/third-party/java/guava:guava"),
         profilo_path("deps/third-party/java/junit:junit"),
+        profilo_path("deps/third-party/java/powermock:powermock"),
     ],
 )

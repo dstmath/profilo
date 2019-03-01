@@ -16,6 +16,8 @@
 
 package com.facebook.profilo.core;
 
+import java.util.Map;
+
 /**
  * Responsible for managing the currently allowed trace providers.
  */
@@ -27,24 +29,58 @@ final public class TraceEvents {
    */
   public static boolean sInitialized;
 
+  private static volatile boolean sProviderNamesInitialized;
+  private static volatile int sProviders = 0;
+
   public static boolean isEnabled(int provider) {
-    return sInitialized && nativeIsEnabled(provider);
+    return (sProviders & provider) != 0;
   }
 
   public static int enabledMask(int providers) {
-    if (!sInitialized) {
-      return 0;
-    }
-    return nativeEnabledMask(providers);
+    return sProviders & providers;
   }
 
-  static native boolean nativeIsEnabled(int provider);
+  public static boolean isProviderNamesInitialized() {
+    return sProviderNamesInitialized;
+  }
 
-  static native int nativeEnabledMask(int providers);
+  public static void initProviderNames(Map<String, Integer> providerNamesMap) {
+    if (!sInitialized) {
+      throw new IllegalStateException("Native library is not initialized.");
+    }
+    if (sProviderNamesInitialized) {
+      return;
+    }
+    int size = providerNamesMap.size();
+    int[] providerIds = new int[size];
+    String[] providerNames = new String[size];
+    int i = 0;
+    for (Map.Entry<String, Integer> nextProvider : providerNamesMap.entrySet()) {
+      providerNames[i] = nextProvider.getKey();
+      providerIds[i++] = nextProvider.getValue();
+    }
+    nativeInitProviderNames(providerIds, providerNames);
+    sProviderNamesInitialized = true;
+  }
 
-  static native void enableProviders(int providers);
+  public static synchronized void enableProviders(int providers) {
+    sProviders = nativeEnableProviders(providers);
+  }
 
-  static native void disableProviders(int providers);
+  public static synchronized void disableProviders(int providers) {
+    sProviders = nativeDisableProviders(providers);
+  }
 
-  static native void clearAllProviders();
+  public static synchronized void clearAllProviders() {
+    nativeClearAllProviders();
+    sProviders = 0;
+  }
+
+  static native int nativeEnableProviders(int providers);
+
+  static native int nativeDisableProviders(int providers);
+
+  static native void nativeClearAllProviders();
+
+  static native void nativeInitProviderNames(int[] providerIds, String[] providerNames);
 }

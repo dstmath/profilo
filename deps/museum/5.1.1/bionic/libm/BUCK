@@ -1,7 +1,0 @@
-load("//build_defs:museum_library.bzl", "museum_library")
-
-museum_library(
-    museum_deps = [
-        "bionic/libc",
-    ],
-)

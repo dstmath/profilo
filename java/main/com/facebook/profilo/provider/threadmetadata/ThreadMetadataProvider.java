@@ -18,7 +18,6 @@ package com.facebook.profilo.provider.threadmetadata;
 
 import com.facebook.profilo.core.BaseTraceProvider;
 import com.facebook.profilo.ipc.TraceContext;
-import java.io.File;
 
 public final class ThreadMetadataProvider extends BaseTraceProvider {
 
@@ -27,7 +26,7 @@ public final class ThreadMetadataProvider extends BaseTraceProvider {
   }
 
   @Override
-  protected void onTraceEnded(TraceContext context, File extraDataFolder) {
+  protected void onTraceEnded(TraceContext context, ExtraDataFileProvider dataFileProvider) {
     nativeLogThreadMetadata();
   }
 
@@ -44,5 +43,9 @@ public final class ThreadMetadataProvider extends BaseTraceProvider {
 
   /* Log thread names and priorities. */
   private static native void nativeLogThreadMetadata();
-}
 
+  @Override
+  protected int getTracingProviders() {
+    return 0;
+  }
+}

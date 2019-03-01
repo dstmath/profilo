@@ -49,11 +49,14 @@ import javax.annotation.Nullable;
  * ending trace context is the same as the one from {@link #getEnablingTraceContext()}), or any
  * other custom situation.
  */
-public abstract class BaseTraceProvider extends TraceOrchestrator.TraceProvider {
+public abstract class BaseTraceProvider {
+
+  public interface ExtraDataFileProvider {
+    File getExtraDataFile(TraceContext context, BaseTraceProvider provider);
+  }
 
   private int mSavedProviders;
   private TraceContext mEnablingContext;
-  private File mExtraFolder;
   protected static final int EVERY_PROVIDER_CHANGE = 0xFFFFFFFF;
 
   @Nullable private String mSolib;
@@ -81,21 +84,27 @@ public abstract class BaseTraceProvider extends TraceOrchestrator.TraceProvider 
     }
   }
 
-  @Override
-  public final void onEnable(TraceContext context, File extraDataFolder) {
+  public final void onEnable(TraceContext context, ExtraDataFileProvider dataFileProvider) {
+    // Early exit if a provider is disabled
+    if (TraceEvents.enabledMask(getSupportedProviders()) == 0) {
+      return;
+    }
     ensureSolibLoaded();
-    onTraceStarted(context, extraDataFolder);
-    processStateChange(context, extraDataFolder);
+    processStateChange(context);
+    onTraceStarted(context, dataFileProvider);
   }
 
-  @Override
-  public final void onDisable(TraceContext context, File extraDataFolder) {
+  public final void onDisable(TraceContext context, ExtraDataFileProvider dataFileProvider) {
+    // Currently not tracing
+    if (mSavedProviders == 0) {
+      return;
+    }
     ensureSolibLoaded();
-    onTraceEnded(context, extraDataFolder);
-    processStateChange(context, extraDataFolder);
+    onTraceEnded(context, dataFileProvider);
+    processStateChange(context);
   }
 
-  private void processStateChange(TraceContext context, File extraDataFolder) {
+  private void processStateChange(TraceContext context) {
     int providerMask = TraceEvents.enabledMask(getSupportedProviders());
 
     // Nothing changed - keep enabled
@@ -106,12 +115,10 @@ public abstract class BaseTraceProvider extends TraceOrchestrator.TraceProvider 
     if (mSavedProviders != 0) {
       disable();
       mEnablingContext = null;
-      mExtraFolder = null;
     }
     // Current provider is on => enable
     if (providerMask != 0) {
       mEnablingContext = context;
-      mExtraFolder = extraDataFolder;
       enable();
     }
     mSavedProviders = providerMask;
@@ -131,12 +138,12 @@ public abstract class BaseTraceProvider extends TraceOrchestrator.TraceProvider 
   /**
    * Called when any trace starts, regardless of whether any supported provider is enabled or not.
    */
-  protected void onTraceStarted(TraceContext context, File extraDataFolder) {
+  protected void onTraceStarted(TraceContext context, ExtraDataFileProvider dataFileProvider) {
     // noop
   }
 
   /** Called when any trace ends, regardless of whether any supported provider is enabled or not. */
-  protected void onTraceEnded(TraceContext context, File extraDataFolder) {
+  protected void onTraceEnded(TraceContext context, ExtraDataFileProvider dataFileProvider) {
     // noop
   }
 
@@ -146,12 +153,17 @@ public abstract class BaseTraceProvider extends TraceOrchestrator.TraceProvider 
     return mEnablingContext;
   }
 
-  /** Returns the extra data folder for the trace that enabled this provider, if any. */
-  @Nullable
-  protected File getExtraDataFolder() {
-    return mExtraFolder;
-  }
-
-  /** @return Supported provider mask */
+  /** @return Supported provider mask (internal API) */
   protected abstract int getSupportedProviders();
+
+  /** @return Tracing provider mask (internal API) */
+  protected abstract int getTracingProviders();
+
+  /** @return Currently tracing providers bitmask. */
+  public int getActiveProviders() {
+    if (mSolib != null && !mSolibInitialized) {
+      return 0; // Not initialized => not tracing
+    }
+    return getTracingProviders();
+  }
 }

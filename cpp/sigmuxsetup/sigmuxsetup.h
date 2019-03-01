@@ -16,37 +16,39 @@
 
 #pragma once
 
+#include <dlfcn.h>
 #include <fb/Build.h>
 #include <fb/log.h>
-#include <sigmux.h>
 #include <linux_syscall_support.h>
+#include <sigmux.h>
 
 namespace facebook {
 namespace profilo {
 namespace sigmuxsetup {
 
 namespace {
-static int sys_sigaction(int signum, const struct sigaction* act,
+int libc_sigaction(
+    int signum,
+    const struct sigaction* act,
     struct sigaction* oldact) {
-#ifdef __LP64__
-  return syscall(
-      __NR_rt_sigaction,
-      signum,
-      act,
-      oldact,
-      sizeof(sigset_t));
-#else
-  return syscall(
-      __NR_sigaction,
-      signum,
-      act,
-      oldact);
-#endif 
+  void* handle = dlopen("libc.so", RTLD_LOCAL);
+  if (!handle) {
+    return -1;
+  }
+  sigmux_sigaction_function real_sigaction =
+      (sigmux_sigaction_function)dlsym(handle, "sigaction");
+  if (!real_sigaction) {
+    dlclose(handle);
+    return -1;
+  }
+  int res = real_sigaction(signum, act, oldact);
+  dlclose(handle);
+  return res;
 }
-} // namespace anonymous
+
+} // namespace
 
 inline void EnsureSigmuxOverridesArtFaultHandler() {
-
   static constexpr auto kL = 21;
   static constexpr auto kNMR1 = 25;
   auto sdk = build::Build::getAndroidSdk();
@@ -79,7 +81,7 @@ inline void EnsureSigmuxOverridesArtFaultHandler() {
     // future (T30664695).
     //
     FBLOGD("Applying FaultHandler workaround");
-    auto old_fn = sigmux_set_real_sigaction(&sys_sigaction);
+    auto old_fn = sigmux_set_real_sigaction(&libc_sigaction);
     if (old_fn != nullptr) {
       // Assume someone else beat us to the punch and revert our change.
       FBLOGD("Reverting FaultHandler workaround, assuming original was safe");
@@ -88,6 +90,6 @@ inline void EnsureSigmuxOverridesArtFaultHandler() {
   }
 }
 
-}
-}
-}
+} // namespace sigmuxsetup
+} // namespace profilo
+} // namespace facebook

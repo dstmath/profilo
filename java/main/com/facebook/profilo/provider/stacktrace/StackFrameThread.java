@@ -33,7 +33,6 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 public final class StackFrameThread extends BaseTraceProvider {
-
   public static final int PROVIDER_STACK_FRAME = ProvidersRegistry.newProvider("stack_trace");
   public static final int PROVIDER_WALL_TIME_STACK_TRACE =
       ProvidersRegistry.newProvider("wall_time_stack_trace");
@@ -69,13 +68,12 @@ public final class StackFrameThread extends BaseTraceProvider {
     if ((providers & (PROVIDER_STACK_FRAME | PROVIDER_WALL_TIME_STACK_TRACE)) != 0) {
       tracers |=
           CPUProfiler.TRACER_DALVIK
-              | CPUProfiler.TRACER_ART_7_0
-              | CPUProfiler.TRACER_ART_6_0
               | CPUProfiler.TRACER_ART_UNWINDC_6_0
               | CPUProfiler.TRACER_ART_UNWINDC_7_0_0
               | CPUProfiler.TRACER_ART_UNWINDC_7_1_0
               | CPUProfiler.TRACER_ART_UNWINDC_7_1_1
-              | CPUProfiler.TRACER_ART_UNWINDC_7_1_2;
+              | CPUProfiler.TRACER_ART_UNWINDC_7_1_2
+              | CPUProfiler.TRACER_JAVASCRIPT;
     }
     if ((providers & PROVIDER_NATIVE_STACK_TRACE) != 0) {
       tracers |= CPUProfiler.TRACER_NATIVE;
@@ -108,9 +106,10 @@ public final class StackFrameThread extends BaseTraceProvider {
 
     // Default to get stack traces from all threads, override for wall time
     // stack profiling of main thread on-demand.
-    int tids = ALL_THREADS;
+
+    boolean wallClockModeEnabled = false;
     if ((enabledProviders & PROVIDER_WALL_TIME_STACK_TRACE) != 0) {
-      tids = Process.myPid();
+      wallClockModeEnabled = true;
     } else {
       if (mSystemClockTimeIntervalMs == -1) {
         mSystemClockTimeIntervalMs = nativeSystemClockTickIntervalMs();
@@ -121,16 +120,21 @@ public final class StackFrameThread extends BaseTraceProvider {
     // might want to pass a list of all the interesting threads.
     // To use the setitimer logic, pass 0 as the second argument.
     boolean started =
-        CPUProfiler.startProfiling(providersToTracers(enabledProviders), sampleRateMs, tids);
+        CPUProfiler.startProfiling(
+            providersToTracers(enabledProviders), sampleRateMs, wallClockModeEnabled);
     if (!started) {
       return false;
     }
 
-    Logger.writeEntryWithoutMatch(
-        ProfiloConstants.PROVIDER_PROFILO_SYSTEM,
+    Logger.writeStandardEntry(
+        ProfiloConstants.NONE,
+        Logger.SKIP_PROVIDER_CHECK | Logger.FILL_TIMESTAMP | Logger.FILL_TID,
         EntryType.TRACE_ANNOTATION,
+        ProfiloConstants.NONE,
+        ProfiloConstants.NONE,
         Identifiers.CPU_SAMPLING_INTERVAL_MS,
-        sampleRateMs);
+        ProfiloConstants.NONE,
+        (long) sampleRateMs);
 
     mEnabled = true;
     return mEnabled;
@@ -151,17 +155,18 @@ public final class StackFrameThread extends BaseTraceProvider {
       Log.e(LOG_TAG, "Duplicate attempt to enable sampling profiler.");
       return;
     }
+
+    boolean enabled = enableInternal(context.cpuSamplingRateMs, context.enabledProviders);
+    if (!enabled) {
+      return;
+    }
+    mSavedTraceContext = context;
+
     mProfilerThread =
         new Thread(
             new Runnable() {
               public void run() {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT);
-                boolean enabled =
-                    enableInternal(context.cpuSamplingRateMs, context.enabledProviders);
-                if (!enabled) {
-                  return;
-                }
-                mSavedTraceContext = context;
                 try {
                   CPUProfiler.loggerLoop();
                 } catch (Exception ex) {
@@ -195,6 +200,29 @@ public final class StackFrameThread extends BaseTraceProvider {
   @Override
   protected int getSupportedProviders() {
     return PROVIDER_NATIVE_STACK_TRACE | PROVIDER_STACK_FRAME | PROVIDER_WALL_TIME_STACK_TRACE;
+  }
+
+  @Override
+  protected int getTracingProviders() {
+    TraceContext savedTraceContext = mSavedTraceContext;
+    if (!mEnabled || savedTraceContext == null) {
+      return 0;
+    }
+
+    int tracingProviders = 0;
+    int enabledProviders = savedTraceContext.enabledProviders;
+    if ((enabledProviders & PROVIDER_WALL_TIME_STACK_TRACE) != 0) {
+      tracingProviders |= PROVIDER_WALL_TIME_STACK_TRACE;
+    } else if ((enabledProviders & PROVIDER_STACK_FRAME) != 0) {
+      tracingProviders |= PROVIDER_STACK_FRAME;
+    }
+    tracingProviders |= enabledProviders & PROVIDER_NATIVE_STACK_TRACE;
+    return tracingProviders;
+  }
+
+  @Override
+  protected void onTraceStarted(TraceContext context, ExtraDataFileProvider dataFileProvider) {
+    CPUProfiler.resetFrameworkNamesSet();
   }
 
   @DoNotStrip

@@ -16,18 +16,18 @@
 
 #pragma once
 
-#include <array>
-#include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <array>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <memory>
-#include <stdlib.h>
 #include <string>
 #include <system_error>
-#include <sys/types.h>
-#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -38,48 +38,48 @@ namespace facebook {
 namespace profilo {
 namespace util {
 
-enum ThreadState: int {
-  TS_RUNNING = 1,       // R
-  TS_SLEEPING = 2,      // S
-  TS_WAITING = 3,       // D
-  TS_ZOMBIE = 4,        // Z
-  TS_STOPPED = 5,       // T
-  TS_TRACING_STOP = 6,  // t
-  TS_PAGING = 7,        // W
-  TS_DEAD = 8,          // X, x
-  TS_WAKEKILL = 9,      // K
-  TS_WAKING = 10,       // W
-  TS_PARKED = 11,       // P
+enum ThreadState : int {
+  TS_RUNNING = 1, // R
+  TS_SLEEPING = 2, // S
+  TS_WAITING = 3, // D
+  TS_ZOMBIE = 4, // Z
+  TS_STOPPED = 5, // T
+  TS_TRACING_STOP = 6, // t
+  TS_PAGING = 7, // W
+  TS_DEAD = 8, // X, x
+  TS_WAKEKILL = 9, // K
+  TS_WAKING = 10, // W
+  TS_PARKED = 11, // P
 
   TS_UNKNOWN = 0,
 };
 
 // Struct for data from /proc/self/task/<pid>/stat
 struct TaskStatInfo {
-  long cpuTime;
+  uint64_t cpuTime;
   ThreadState state;
-  long majorFaults;
-  long cpuNum;
-  long kernelCpuTimeMs;
-  long minorFaults;
+  uint64_t majorFaults;
+  uint8_t cpuNum;
+  uint64_t kernelCpuTimeMs;
+  uint64_t minorFaults;
 
   TaskStatInfo();
 };
 
 // Struct for data from /proc/self/task/<pid>/schedstat
 struct SchedstatInfo {
-  uint32_t cpuTimeMs;
-  uint32_t waitToRunTimeMs;
+  uint64_t cpuTimeMs;
+  uint64_t waitToRunTimeMs;
 
   SchedstatInfo();
 };
 
 // Struct for data from /proc/self/task/<pid>/sched
 struct SchedInfo {
-  uint32_t nrVoluntarySwitches;
-  uint32_t nrInvoluntarySwitches;
-  uint32_t iowaitSum;
-  uint32_t iowaitCount;
+  uint64_t nrVoluntarySwitches;
+  uint64_t nrInvoluntarySwitches;
+  uint64_t iowaitSum;
+  uint64_t iowaitCount;
 
   SchedInfo();
 };
@@ -101,31 +101,41 @@ struct VmStatInfo {
 
 // Consolidated stats from different stat files
 struct ThreadStatInfo {
+  // monotonic clock value when this was captured
+  uint64_t monotonicStatTime;
+
+  // This bitmap contains information about which stats values were changed in
+  // the previous sample. Every bit corresponds to a StatType identifier:
+  //  1 - the value moved in the last sample
+  //  0 - the value remained unchanged with respect to the preceding sample
+  //  value.
+  uint32_t statChangeMask;
+
   // STAT
-  long cpuTimeMs;
+  uint64_t cpuTimeMs;
   ThreadState state;
-  long majorFaults;
-  long cpuNum;
-  long kernelCpuTimeMs;
-  long minorFaults;
+  uint64_t majorFaults;
+  uint64_t cpuNum;
+  uint64_t kernelCpuTimeMs;
+  uint64_t minorFaults;
   // SCHEDSTAT
-  long highPrecisionCpuTimeMs;
-  long waitToRunTimeMs;
+  uint64_t highPrecisionCpuTimeMs;
+  uint64_t waitToRunTimeMs;
   // SCHED
-  long nrVoluntarySwitches;
-  long nrInvoluntarySwitches;
-  long iowaitSum;
-  long iowaitCount;
+  uint64_t nrVoluntarySwitches;
+  uint64_t nrInvoluntarySwitches;
+  uint64_t iowaitSum;
+  uint64_t iowaitCount;
 
   uint32_t availableStatsMask;
 
   ThreadStatInfo();
 };
 
-using stats_callback_fn = std::function<void (
-  uint32_t, /* tid */
-  ThreadStatInfo &, /* previous stats */
-  ThreadStatInfo & /* current stats */)>;
+using stats_callback_fn = std::function<void(
+    uint32_t, /* tid */
+    ThreadStatInfo&, /* previous stats */
+    ThreadStatInfo& /* current stats */)>;
 
 using ThreadList = std::unordered_set<uint32_t>;
 ThreadList threadListFromProcFs();
@@ -137,49 +147,55 @@ std::string getThreadName(uint32_t thread_id);
 
 TaskStatInfo getStatInfo(uint32_t tid);
 
-class TaskStatFile: public BaseStatFile<TaskStatInfo> {
-public:
+class TaskStatFile : public BaseStatFile<TaskStatInfo> {
+ public:
   explicit TaskStatFile(uint32_t tid);
   explicit TaskStatFile(std::string path) : BaseStatFile(path) {}
 
   TaskStatInfo doRead(int fd, uint32_t requested_stats_mask) override;
 };
 
-class TaskSchedstatFile: public BaseStatFile<SchedstatInfo> {
-public:
+class TaskSchedstatFile : public BaseStatFile<SchedstatInfo> {
+ public:
   explicit TaskSchedstatFile(uint32_t tid);
   explicit TaskSchedstatFile(std::string path) : BaseStatFile(path) {}
 
   SchedstatInfo doRead(int fd, uint32_t requested_stats_mask) override;
 };
 
-class TaskSchedFile: public BaseStatFile<SchedInfo> {
-public:
+class TaskSchedFile : public BaseStatFile<SchedInfo> {
+ public:
   explicit TaskSchedFile(uint32_t tid);
-  explicit TaskSchedFile(std::string path) : BaseStatFile(path),
-    value_offsets_(),
-    initialized_(false),
-    value_size_(),
-    availableStatsMask(0) {}
+  explicit TaskSchedFile(std::string path)
+      : BaseStatFile(path),
+        value_offsets_(),
+        initialized_(false),
+        value_size_(),
+        buffer_(),
+        availableStatsMask(0) {}
 
   SchedInfo doRead(int fd, uint32_t requested_stats_mask) override;
 
-private:
+ private:
+  static const size_t kMaxStatFileLength = 4096;
+
   std::vector<std::pair<int32_t, int32_t>> value_offsets_;
   bool initialized_;
   int32_t value_size_;
-public:
+  char buffer_[kMaxStatFileLength];
+
+ public:
   int32_t availableStatsMask;
 };
 
 class VmStatFile : public BaseStatFile<VmStatInfo> {
-public:
+ public:
   explicit VmStatFile(std::string path);
   explicit VmStatFile() : VmStatFile("/proc/vmstat") {}
 
   VmStatInfo doRead(int fd, uint32_t requested_stats_mask) override;
 
-private:
+ private:
   void recalculateOffsets();
 
   static const auto kNotFound = -1;
@@ -187,7 +203,7 @@ private:
   static const size_t kMaxStatFileLength = 4096;
 
   struct Key {
-    const char * name;
+    const char* name;
     uint8_t length;
     int16_t offset;
     uint64_t& stat_field;
@@ -201,15 +217,13 @@ private:
 
 // Consolidated stat files manager class
 class ThreadStatHolder {
-public:
-
+ public:
   explicit ThreadStatHolder(uint32_t tid);
 
   ThreadStatInfo refresh(uint32_t requested_stats_mask);
   ThreadStatInfo getInfo();
 
-private:
-
+ private:
   std::unique_ptr<TaskStatFile> stat_file_;
   std::unique_ptr<TaskSchedstatFile> schedstat_file_;
   std::unique_ptr<TaskSchedFile> sched_file_;
@@ -220,19 +234,19 @@ private:
 };
 
 class ThreadCache {
-
  public:
   ThreadCache() = default;
 
   // Execute `function` for all currently existing threads.
   void forEach(
-    stats_callback_fn callback,
-    uint32_t requested_stats_mask);
+      stats_callback_fn callback,
+      uint32_t requested_stats_mask,
+      const std::unordered_set<int32_t>* black_list = nullptr);
 
   void forThread(
-    uint32_t tid,
-    stats_callback_fn callback,
-    uint32_t requested_stats_mask);
+      uint32_t tid,
+      stats_callback_fn callback,
+      uint32_t requested_stats_mask);
 
   int32_t getStatsAvailabililty(int32_t tid);
 
@@ -240,10 +254,10 @@ class ThreadCache {
 
   void clear();
 
-private:
+ private:
   std::unordered_map<uint32_t, ThreadStatHolder> cache_;
 };
 
-} // util
-} // profilo
-} // facebook
+} // namespace util
+} // namespace profilo
+} // namespace facebook

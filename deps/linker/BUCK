@@ -1,12 +1,9 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:profilo_oss_defs.bzl", "profilo_oss_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_oss_cxx_library", "profilo_path")
 
 profilo_oss_cxx_library(
     name = "linker",
     srcs = glob(
         ["*.cpp"],
-        exclude = ["trampoline_arm.c"],
     ),
     header_namespace = "linker",
     exported_headers = glob(["*.h"]),
@@ -20,57 +17,24 @@ profilo_oss_cxx_library(
             ["-D__ARM__"],
         ),
         (
-            "android-x86",
+            "android-x86$",
             ["-D__X86__"],
         ),
     ],
     preferred_linkage = "shared",
+    preprocessor_flags = [
+        "-DLOG_TAG=\"Profilo/linker\"",
+    ],
     soname = "libprofilo_linker.$(ext)",
     visibility = [
         "PUBLIC",
     ],
     deps = [
-        ":trampoline_arm",
-        ":trampoline_thumb",
+        profilo_path("deps/breakpad:abort-with-reason"),
+        profilo_path("deps/build:build"),
         profilo_path("deps/cjni:cjni"),
         profilo_path("deps/fb:fb"),
         profilo_path("deps/sig_safe_write:sig_safe_write"),
         profilo_path("deps/sigmux:sigmux"),
     ],
-)
-
-profilo_oss_cxx_library(
-    name = "trampoline_arm",
-    platform_compiler_flags = [(
-        "armv7",
-        [
-            "-marm",
-            "-DTRAMP_ARM",
-        ],
-    )],
-    platform_srcs = [
-        (
-            "armv7",
-            ["trampoline_arm.c"],
-        ),
-    ],
-    preferred_linkage = "static",
-)
-
-profilo_oss_cxx_library(
-    name = "trampoline_thumb",
-    platform_compiler_flags = [(
-        "armv7",
-        [
-            "-mthumb",
-            "-DTRAMP_THUMB",
-        ],
-    )],
-    platform_srcs = [
-        (
-            "armv7",
-            ["trampoline_arm.c"],
-        ),
-    ],
-    preferred_linkage = "static",
 )

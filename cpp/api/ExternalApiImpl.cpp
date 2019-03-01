@@ -18,15 +18,19 @@
 
 #include <unistd.h>
 
-#include <profilo/Logger.h>
+#include <profiler/ExternalTracerManager.h>
 #include <profilo/LogEntry.h>
+#include <profilo/Logger.h>
 #include <profilo/TraceProviders.h>
 
 using namespace facebook::profilo;
 
 namespace {
 
-void internal_mark_start(const char* provider, const char* msg) {
+void internal_mark_start(
+    const char* provider,
+    const char* msg,
+    size_t len = 0) {
   if (!TraceProviders::get().isEnabled(provider) || msg == nullptr) {
     return;
   }
@@ -36,14 +40,10 @@ void internal_mark_start(const char* provider, const char* msg) {
   entry.timestamp = monotonicTime();
   entry.type = entries::MARK_PUSH;
   int32_t id = logger.write(std::move(entry));
-  size_t msg_len = strlen(msg);
-  static const char* kNameKey = "__name";
-  static const int kNameLen = strlen(kNameKey);
+  size_t msg_len = len == 0 ? strlen(msg) : len;
 
   if (msg_len > 0) {
-    id = logger.writeBytes(
-        entries::STRING_KEY, id, (const uint8_t*)kNameKey, kNameLen);
-    logger.writeBytes(entries::STRING_VALUE, id, (const uint8_t*)msg, msg_len);
+    logger.writeBytes(entries::STRING_NAME, id, (const uint8_t*)msg, msg_len);
   }
 }
 
@@ -101,13 +101,26 @@ void internal_log_classload_failed(const char* provider) {
   logger.write(std::move(entry));
 }
 
+bool is_enabled(const char* provider) {
+  return TraceProviders::get().isEnabled(provider);
+}
+
+bool internal_register_external_tracer_callback(
+    int tracerType,
+    profilo_int_collect_stack_fn callback) {
+  return profiler::ExternalTracerManager::getInstance().registerCallback(
+      tracerType, callback);
+}
+
 } // namespace
 
-__attribute__((constructor))
-void init_external_api() {
+__attribute__((constructor)) void init_external_api() {
   profilo_api_int.mark_start = &internal_mark_start;
   profilo_api_int.mark_end = &internal_mark_end;
   profilo_api_int.log_classload_start = &internal_log_classload_start;
   profilo_api_int.log_classload_end = &internal_log_classload_end;
   profilo_api_int.log_classload_failed = &internal_log_classload_failed;
+  profilo_api_int.is_enabled = &is_enabled;
+  profilo_api_int.register_external_tracer_callback =
+      &internal_register_external_tracer_callback;
 }

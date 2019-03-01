@@ -24,11 +24,11 @@ extern "C" {
 
 namespace {
 
-void api_mark_start(const char* provider, const char* name) {
+void api_mark_start(const char* provider, const char* name, size_t len = 0) {
   if (profilo_api_int.mark_start == nullptr) {
     return;
   }
-  profilo_api_int.mark_start(provider, name);
+  profilo_api_int.mark_start(provider, name, len);
 }
 
 void api_mark_end(const char* provider) {
@@ -59,15 +59,35 @@ void api_log_classload_failed(const char* provider) {
   profilo_api_int.log_classload_failed(provider);
 }
 
-} // namespace anonymous
+bool api_is_enabled(const char* provider) {
+  if (profilo_api_int.is_enabled == nullptr) {
+    return false;
+  }
+  return profilo_api_int.is_enabled(provider);
+}
+
+bool api_register_external_tracer_callback(
+    int tracerType,
+    profilo_int_collect_stack_fn callback) {
+  if (profilo_api_int.register_external_tracer_callback == nullptr) {
+    return false;
+  }
+  return profilo_api_int.register_external_tracer_callback(
+      tracerType, callback);
+}
+
+} // namespace
 
 ProfiloApi* profilo_api() {
-  static ProfiloApi api {
-    .mark_start = &api_mark_start,
-    .mark_end = &api_mark_end,
-    .log_classload_start = &api_log_classload_start,
-    .log_classload_end = &api_log_classload_end,
-    .log_classload_failed = &api_log_classload_failed,
+  static ProfiloApi api{
+      .mark_start = &api_mark_start,
+      .mark_end = &api_mark_end,
+      .log_classload_start = &api_log_classload_start,
+      .log_classload_end = &api_log_classload_end,
+      .log_classload_failed = &api_log_classload_failed,
+      .is_enabled = &api_is_enabled,
+      .register_external_tracer_callback =
+          &api_register_external_tracer_callback,
   };
   return &api;
 }

@@ -1,10 +1,6 @@
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
-load(":build_defs.bzl", "museum_tracer_library", "unwindc_tracer_library")
-
-museum_tracer_library(version = "6.0.1")
-
-museum_tracer_library(version = "7.0.0")
+load("//tools/build_defs/android:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_maybe_hidden_visibility", "profilo_path")
+load(":build_defs.bzl", "unwindc_tracer_library")
 
 unwindc_tracer_library("6.0.0")
 
@@ -58,8 +54,6 @@ fb_xplat_cxx_library(
     soname = "libprofilo_stacktrace_artcompat.so",
     deps = [
         ":base_tracer",
-        ":museum-tracer-6.0.1",
-        ":museum-tracer-7.0.0",
         ":unwindc-tracer-6.0.0",
         ":unwindc-tracer-7.0.0",
         ":unwindc-tracer-7.1.0",
@@ -77,9 +71,89 @@ fb_xplat_cxx_library(
     header_namespace = "profiler",
     exported_headers = [
         "BaseTracer.h",
+        "JavaBaseTracer.h",
     ],
     visibility = [
-        profilo_path("..."),
+        "PUBLIC",
+    ],
+)
+
+fb_xplat_cxx_library(
+    name = "external_tracer",
+    srcs = [
+        "ExternalTracer.cpp",
+    ],
+    header_namespace = "profiler",
+    exported_headers = [
+        "ExternalTracer.h",
+    ],
+    force_static = True,
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        ":base_tracer",
+        profilo_path("cpp/api:external_api"),
+    ],
+)
+
+fb_xplat_cxx_library(
+    name = "external_tracer_manager",
+    srcs = [
+        "ExternalTracerManager.cpp",
+    ],
+    header_namespace = "profiler",
+    exported_headers = [
+        "ExternalTracerManager.h",
+    ],
+    force_static = True,
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        ":external_tracer",
+        profilo_path("cpp/api:external_api"),
+    ],
+)
+
+fb_xplat_cxx_library(
+    name = "js_tracer",
+    srcs = [
+        "JSTracer.cpp",
+    ],
+    header_namespace = "profiler",
+    exported_headers = [
+        "JSTracer.h",
+    ],
+    force_static = True,
+    preprocessor_flags = [
+        "-DLOG_TAG=\"Profilo/JS\"",
+    ],
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        ":external_tracer",
+        profilo_path("deps/atomic:atomic"),
+        profilo_path("cpp/logger:logger"),
+    ],
+)
+
+fb_xplat_cxx_library(
+    name = "tracer_utils",
+    srcs = [
+        "DalvikUtils.cpp",
+    ],
+    header_namespace = "profiler",
+    exported_headers = [
+        "DalvikUtils.h",
+    ],
+    force_static = True,
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        profilo_path("deps/dalvik:dalvik-subset-headers-for-tracer"),
     ],
 )
 
@@ -87,6 +161,7 @@ fb_xplat_cxx_library(
     name = "profiler",
     srcs = [
         "DalvikTracer.cpp",
+        "DalvikUtils.cpp",
         "SamplingProfiler.cpp",
         "jni.cpp",
     ],
@@ -98,16 +173,15 @@ fb_xplat_cxx_library(
     exported_headers = PROFILER_EXPORTED_HEADERS,
     allow_jni_merging = True,
     compiler_flags = [
-        "-fvisibility=hidden",
         "-fexceptions",
         "-DLOG_TAG=\"Profilo/Profiler\"",
         "-Wno-format-security",
         "-Wno-unknown-attributes",
         #'-DFBLOG_NDEBUG=0', # verbose logging
         "-std=gnu++14",
-    ],
+    ] + profilo_maybe_hidden_visibility(),
     soname = "libprofilo_stacktrace.$(ext)",
-    supported_platforms_regex = "^android-(armv7|x86)$",
+    supported_platforms_regex = "^android-",
     visibility = [
         "PUBLIC",
     ],
@@ -115,8 +189,9 @@ fb_xplat_cxx_library(
         ":artcompat",
         ":base_tracer",
         ":constants",
-        ":museum-tracer-6.0.1",
-        ":museum-tracer-7.0.0",
+        ":external_tracer",
+        ":external_tracer_manager",
+        ":js_tracer",
         ":unwindc-tracer-6.0.0",
         ":unwindc-tracer-7.0.0",
         ":unwindc-tracer-7.1.0",
@@ -128,10 +203,10 @@ fb_xplat_cxx_library(
         profilo_path("cpp/logger:logger"),
         profilo_path("cpp/sigmuxsetup:sigmuxsetup"),
         profilo_path("cpp/util:util"),
-        profilo_path("deps/dalvik:dalvik-subset"),
+        profilo_path("deps/dalvik:dalvik-subset-headers"),
         profilo_path("deps/fb:fb"),
         profilo_path("deps/fbjni:fbjni"),
-        profilo_path("deps/museum:museum"),
         profilo_path("deps/sigmux:sigmux"),
+        profilo_path("cpp/api:external_api"),
     ],
 )

@@ -16,13 +16,13 @@
 
 #include <util/ProcFs.h>
 
-#include <stdexcept>
-#include <unistd.h>
 #include <sys/types.h>
-#include <array>
-#include <algorithm>
-#include <climits>
+#include <unistd.h>
 #include <util/common.h>
+#include <algorithm>
+#include <array>
+#include <climits>
+#include <stdexcept>
 
 namespace facebook {
 namespace profilo {
@@ -30,46 +30,57 @@ namespace util {
 
 static constexpr int kMaxProcFileLength = 64;
 
+// Custom parse for unsinged long values, ignores minus sign and skips blank
+// spaces in front. Such narrowly specialized method is faster than the standard
+// strtoull.
+static uint64_t parse_ull(char* str, char** end) {
+  static constexpr int kMaxDigits = 20;
+
+  char* cur = str;
+  while (*cur == ' ') {
+    ++cur;
+  }
+
+  uint64_t result = 0;
+  uint8_t len = 0;
+  while (*cur >= '0' && *cur <= '9' && len <= kMaxDigits) {
+    result *= 10;
+    result += (*cur - '0');
+    ++len;
+    ++cur;
+  }
+
+  *end = cur;
+  return result;
+}
+
 // Return all the numeric items in the folder passed as parameter.
 // Non-numeric items are ignored.
-static std::unordered_set<uint32_t> numericFolderItems(
-  const char* folder
-) {
+static std::unordered_set<uint32_t> numericFolderItems(const char* folder) {
   DIR* dir = opendir(folder);
   if (dir == nullptr) {
     throw std::system_error(errno, std::system_category());
   }
   std::unordered_set<uint32_t> items;
-
-  // We don't want to use readdir(3) since that may use global state in a non-thread-safe manner.
-  // Instead, we need to use readdir_r(3) which only uses user-supplied buffers.
-
-  // There's a fairly convoluted POSIX-compliant way via fpathconf(3) to allocate a dirent
-  // with a big enough buffer for the filename.
-  // Or, we can exploit the fact that this is Linux and that dirent.d_name is char[255].
-
-  dirent child {};
   dirent* result = nullptr;
-
   errno = 0;
-  while (readdir_r(dir, &child, &result) == 0 && result != nullptr) {
-
+  while ((result = readdir(dir)) != nullptr) {
     // Skip navigation entries
-    if (strcmp(".", child.d_name) == 0 ||
-        strcmp("..", child.d_name) == 0) {
+    if (strcmp(".", result->d_name) == 0 || strcmp("..", result->d_name) == 0) {
       continue;
     }
 
     errno = 0;
     char* endptr = nullptr;
-    uint32_t item = strtoul(child.d_name, &endptr, /*base*/ 10);
+    uint32_t item = strtoul(result->d_name, &endptr, /*base*/ 10);
     if (errno != 0 || *endptr != '\0') {
       continue; // unable to parse item
     }
     items.emplace(item);
   }
   if (errno != 0 || closedir(dir) != 0) {
-    throw std::system_error(errno, std::system_category(), "readdir or closedir");
+    throw std::system_error(
+        errno, std::system_category(), "readdir or closedir");
   }
   return items;
 }
@@ -84,8 +95,11 @@ FdList fdListFromProcFs() {
 
 std::string getThreadName(uint32_t thread_id) {
   char threadNamePath[kMaxProcFileLength]{};
-  int bytesWritten =
-    snprintf(&threadNamePath[0], kMaxProcFileLength, "/proc/self/task/%d/comm", thread_id);
+  int bytesWritten = snprintf(
+      &threadNamePath[0],
+      kMaxProcFileLength,
+      "/proc/self/task/%d/comm",
+      thread_id);
   if (bytesWritten < 0 || bytesWritten >= kMaxProcFileLength) {
     errno = 0;
     return "";
@@ -101,7 +115,7 @@ std::string getThreadName(uint32_t thread_id) {
   fclose(threadNameFile);
   errno = 0;
   if (res == nullptr) {
-      return "";
+    return "";
   }
 
   return std::string(threadName);
@@ -111,20 +125,21 @@ TaskStatInfo getStatInfo(uint32_t tid) {
   return TaskStatFile(tid).refresh();
 }
 
-ThreadStatInfo::ThreadStatInfo() :
-    cpuTimeMs(),
-    state(ThreadState::TS_UNKNOWN),
-    majorFaults(),
-    cpuNum(-1),
-    kernelCpuTimeMs(),
-    minorFaults(),
-    highPrecisionCpuTimeMs(),
-    waitToRunTimeMs(),
-    nrVoluntarySwitches(),
-    nrInvoluntarySwitches(),
-    iowaitSum(),
-    iowaitCount(),
-    availableStatsMask(0) {}
+ThreadStatInfo::ThreadStatInfo()
+    : monotonicStatTime(0),
+      cpuTimeMs(),
+      state(ThreadState::TS_UNKNOWN),
+      majorFaults(),
+      cpuNum(-1),
+      kernelCpuTimeMs(),
+      minorFaults(),
+      highPrecisionCpuTimeMs(),
+      waitToRunTimeMs(),
+      nrVoluntarySwitches(),
+      nrInvoluntarySwitches(),
+      iowaitSum(),
+      iowaitCount(),
+      availableStatsMask(0) {}
 
 SchedstatInfo::SchedstatInfo() : cpuTimeMs(0), waitToRunTimeMs(0) {}
 
@@ -155,10 +170,10 @@ VmStatInfo::VmStatInfo()
 
 namespace {
 
-enum StatFileType: int8_t {
-  STAT      = 0,
+enum StatFileType : int8_t {
+  STAT = 0,
   SCHEDSTAT = 1,
-  SCHED     = 2,
+  SCHED = 1 << 1,
 };
 
 static const std::array<int32_t, 3> kFileStats = {
@@ -173,17 +188,27 @@ static const std::array<int32_t, 3> kFileStats = {
 
 inline ThreadState convertCharToStateEnum(char stateChar) {
   switch (stateChar) {
-    case 'R' : return TS_RUNNING;
-    case 'S' : return TS_SLEEPING;
-    case 'D' : return TS_WAITING;
-    case 'Z' : return TS_ZOMBIE;
-    case 'T' : return TS_STOPPED;
-    case 't' : return TS_TRACING_STOP;
-    case 'X' :
-    case 'x' : return TS_DEAD;
-    case 'K' : return TS_WAKEKILL;
-    case 'W' : return TS_WAKING;
-    case 'P' : return TS_PARKED;
+    case 'R':
+      return TS_RUNNING;
+    case 'S':
+      return TS_SLEEPING;
+    case 'D':
+      return TS_WAITING;
+    case 'Z':
+      return TS_ZOMBIE;
+    case 'T':
+      return TS_STOPPED;
+    case 't':
+      return TS_TRACING_STOP;
+    case 'X':
+    case 'x':
+      return TS_DEAD;
+    case 'K':
+      return TS_WAKEKILL;
+    case 'W':
+      return TS_WAKING;
+    case 'P':
+      return TS_PARKED;
   }
   return TS_UNKNOWN;
 }
@@ -194,7 +219,6 @@ inline ThreadState convertCharToStateEnum(char stateChar) {
 // Throws std::runtime_error if `end` is reached before `ch`
 // or \0 is encountered anywhere in the string.
 char* skipUntil(char* data, const char* end, char ch) {
-
   // It's important that we check against `end`
   // before we dereference `data`.
   while (data < end && *data != ch) {
@@ -232,7 +256,7 @@ TaskStatInfo parseStatFile(char* data, size_t size, uint32_t stats_mask) {
   data = skipUntil(data, end, ' '); // flags
 
   char* endptr = nullptr;
-  long minflt = strtol(data, &endptr, 10); // minflt
+  auto minflt = parse_ull(data, &endptr); // minflt
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse minflt");
   }
@@ -241,7 +265,7 @@ TaskStatInfo parseStatFile(char* data, size_t size, uint32_t stats_mask) {
   data = skipUntil(data, end, ' '); // cminflt
 
   endptr = nullptr;
-  long majflt = strtol(data, &endptr, 10); // majflt
+  auto majflt = parse_ull(data, &endptr); // majflt
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse majflt");
   }
@@ -250,14 +274,14 @@ TaskStatInfo parseStatFile(char* data, size_t size, uint32_t stats_mask) {
   data = skipUntil(data, end, ' '); // cmajflt
 
   endptr = nullptr;
-  long utime = strtol(data, &endptr, 10); // utime
+  auto utime = parse_ull(data, &endptr); // utime
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse utime");
   }
   data = skipUntil(endptr, end, ' ');
 
   endptr = nullptr;
-  long stime = strtol(data, &endptr, 10); // stime
+  auto stime = parse_ull(data, &endptr); // stime
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse stime");
   }
@@ -316,8 +340,7 @@ TaskStatInfo parseStatFile(char* data, size_t size, uint32_t stats_mask) {
 std::string tidToStatPath(uint32_t tid, const char* stat_name) {
   char threadStatPath[kMaxProcFileLength]{};
 
-  int bytesWritten =
-    snprintf(
+  int bytesWritten = snprintf(
       threadStatPath,
       kMaxProcFileLength,
       "/proc/self/task/%d/%s",
@@ -326,9 +349,7 @@ std::string tidToStatPath(uint32_t tid, const char* stat_name) {
 
   if (bytesWritten < 0 || bytesWritten >= kMaxProcFileLength) {
     throw std::system_error(
-      errno,
-      std::system_category(),
-      "Could not format file path");
+        errno, std::system_category(), "Could not format file path");
   }
   return std::string(threadStatPath);
 }
@@ -337,20 +358,20 @@ SchedstatInfo parseSchedstatFile(char* data, size_t size) {
   const char* end = (data + size);
 
   char* endptr = nullptr;
-  int64_t run_time_ns = strtoll(data, &endptr, 10); // run time
+  auto run_time_ns = parse_ull(data, &endptr); // run time
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse run time");
   }
   data = skipUntil(endptr, end, ' ');
   endptr = nullptr;
-  long long wait_time_ns = strtoll(data, &endptr, 10); // run time
+  auto wait_time_ns = parse_ull(data, &endptr); // run time
   if (errno == ERANGE || data == endptr || endptr > end) {
     throw std::runtime_error("Could not parse wait time");
   }
 
   SchedstatInfo info{};
-  info.cpuTimeMs = (long)(run_time_ns / 1000000);
-  info.waitToRunTimeMs = (long)(wait_time_ns / 1000000);
+  info.cpuTimeMs = run_time_ns / 1000000;
+  info.waitToRunTimeMs = wait_time_ns / 1000000;
 
   return info;
 }
@@ -369,9 +390,7 @@ TaskStatInfo TaskStatFile::doRead(int fd, uint32_t requested_stats_mask) {
   int bytes_read = read(fd, buffer, (sizeof(buffer) - 1));
   if (bytes_read < 0) {
     throw std::system_error(
-      errno,
-      std::system_category(),
-      "Could not read stat file");
+        errno, std::system_category(), "Could not read stat file");
   }
 
   // At this point we know that `buffer` must be null terminated because we
@@ -391,9 +410,7 @@ SchedstatInfo TaskSchedstatFile::doRead(int fd, uint32_t requested_stats_mask) {
   int bytes_read = read(fd, buffer, (sizeof(buffer) - 1));
   if (bytes_read < 0) {
     throw std::system_error(
-      errno,
-      std::system_category(),
-      "Could not read schedstat file");
+        errno, std::system_category(), "Could not read schedstat file");
   }
 
   // At this point we know that `buffer` must be null terminated because we
@@ -402,80 +419,83 @@ SchedstatInfo TaskSchedstatFile::doRead(int fd, uint32_t requested_stats_mask) {
 }
 
 TaskSchedFile::TaskSchedFile(uint32_t tid)
-  : BaseStatFile<SchedInfo>(tidToStatPath(tid, "sched")),
-  value_offsets_(),
-  initialized_(false),
-  value_size_(),
-  availableStatsMask(0) {}
+    : BaseStatFile<SchedInfo>(tidToStatPath(tid, "sched")),
+      value_offsets_(),
+      initialized_(false),
+      value_size_(),
+      buffer_(),
+      availableStatsMask(0) {}
 
 SchedInfo TaskSchedFile::doRead(int fd, uint32_t requested_stats_mask) {
-  constexpr size_t kMaxStatLineLength = 4096;
-  char buffer[kMaxStatLineLength]{};
-  int size = read(fd, buffer, sizeof(buffer) - 1);
+  int size = read(fd, buffer_, kMaxStatFileLength - 1);
   if (size < 0) {
     throw std::system_error(
         errno, std::system_category(), "Could not read stat file");
   }
+  char* endfile = buffer_ + size;
 
   if (!initialized_) {
     struct KnownKey {
-      const char * key;
+      const char* key;
       StatType type;
     };
 
-    static std::array<KnownKey, 4> kKnownKeys = {{
-      {"nr_voluntary_switches", StatType::NR_VOLUNTARY_SWITCHES},
-      {"nr_involuntary_switches", StatType::NR_INVOLUNTARY_SWITCHES},
-      {"se.statistics.iowait_count", StatType::IOWAIT_COUNT},
-      {"se.statistics.iowait_sum", StatType::IOWAIT_SUM}
-    }};
+    static std::array<KnownKey, 4> kKnownKeys = {
+        {{"nr_voluntary_switches", StatType::NR_VOLUNTARY_SWITCHES},
+         {"nr_involuntary_switches", StatType::NR_INVOLUNTARY_SWITCHES},
+         {"se.statistics.iowait_count", StatType::IOWAIT_COUNT},
+         {"se.statistics.iowait_sum", StatType::IOWAIT_SUM}}};
 
-    auto endline = std::strchr(buffer, '\n');
+    // Skip 2 lines.
+    auto endline = std::strchr(buffer_, '\n');
     if (endline == nullptr) {
       throw std::runtime_error("Unexpected file format");
     }
-
-    auto endline_2 = std::strchr(endline + 1, '\n');
+    endline = std::strchr(endline + 1, '\n');
     if (endline == nullptr) {
       throw std::runtime_error("Unexpected file format");
     }
-
-    auto line_len = std::distance(endline, endline_2);
-    auto pos = endline_2 + 1;
 
     // The stat file line is in the form of key:value record with fixed line
-    // length. The key is aligned to the left and the value is aligned to the
+    // length per metric, but which can vary depending on a metric name.
+    // The key is aligned to the left and the value is aligned to the
     // right:  "key     :     value"
     // In the loop we parse the buffer line by line reading the key-value pairs.
     // If key is in the known keys (kKnownKeys) we calculate a global offset to
     // the value in the file and record it for fast access in the future.
-    for (; pos < buffer + size; pos += line_len) {
-      auto key_end = strchr(pos, ' ');
-      if (key_end == nullptr) {
+    for (auto pos = endline + 1; pos < endfile;) {
+      // Sometimes colon delimiter can go right after key ("key:") and we should
+      // account for this case too.
+      auto key_end = std::strchr(pos, ' ');
+      auto delim = std::strchr(pos, ':');
+      if (key_end == nullptr || delim == nullptr) {
         break;
       }
-      auto key_len = std::distance(pos, key_end);
+      auto key_len =
+          std::min(std::distance(pos, key_end), std::distance(pos, delim));
+
       auto known_key = std::find_if(
-        kKnownKeys.begin(),
-        kKnownKeys.end(),
-        [pos, key_len](KnownKey const& key) {
-          return std::strncmp(key.key, pos, key_len) == 0;
-        });
-
-      if (known_key == kKnownKeys.end()) {
-        continue;
+          kKnownKeys.begin(),
+          kKnownKeys.end(),
+          [pos, key_len](KnownKey const& key) {
+            return std::strncmp(key.key, pos, key_len) == 0;
+          });
+      if (known_key != kKnownKeys.end()) {
+        int value_offset = std::distance(buffer_, delim) + 1;
+        value_offsets_.push_back(std::make_pair(known_key->type, value_offset));
+        availableStatsMask |= known_key->type;
       }
-
-      auto delim = strchr(key_end, ':');
-      if (delim == nullptr) {
+      // Switch to the next line.
+      pos = std::strchr(delim, '\n');
+      if (!pos) {
         break;
       }
-      int value_offset = std::distance(buffer, delim) + 1;
       if (!value_size_) {
-        value_size_ = line_len - 1 - std::distance(pos, delim);
+        // Saving allocated space for value (fixed size for all stats) to detect
+        // truncated values.
+        value_size_ = std::distance(delim, pos);
       }
-      value_offsets_.push_back(std::make_pair(known_key->type, value_offset));
-      availableStatsMask |= known_key->type;
+      ++pos;
     }
 
     initialized_ = true;
@@ -490,14 +510,16 @@ SchedInfo TaskSchedFile::doRead(int fd, uint32_t requested_stats_mask) {
     auto key_type = entry.first;
     auto value_offset = entry.second;
 
-    if (value_offset >= size) {
-      throw std::runtime_error(
-          "Error trying to read value by pre-defined offset");
+    if (value_offset + value_size_ > size) {
+      // Possibly truncated value, ignoring.
+      continue;
     }
     errno = 0;
-    auto value = strtoul(buffer + value_offset, nullptr, 10);
-    if (errno == ERANGE) {
-      throw std::runtime_error("Value out of range");
+    char* endptr;
+    auto value = parse_ull(buffer_ + value_offset, &endptr);
+    if (errno == ERANGE || (buffer_ + value_offset) == endptr ||
+        endptr > endfile) {
+      throw std::runtime_error("Could not parse value");
     }
 
     switch (key_type) {
@@ -523,21 +545,50 @@ VmStatFile::VmStatFile(std::string path)
     : BaseStatFile<VmStatInfo>(path),
       buffer_(),
       stat_info_(),
-      // The order corresponds to the order in /proc/vmstat generated by the Linux kernel
-      keys_({{"nr_free_pages", sizeof("nr_free_pages") - 1, kNotSet, stat_info_.nrFreePages},
-              {"nr_dirty", sizeof("nr_dirty") - 1, kNotSet, stat_info_.nrDirty},
-              {"nr_writeback", sizeof("nr_writeback") - 1, kNotSet, stat_info_.nrWriteback},
-              {"pgpgin", sizeof("pgpgin") - 1, kNotSet, stat_info_.pgPgIn},
-              {"pgpgout", sizeof("pgpgout") - 1, kNotSet, stat_info_.pgPgOut},
-              {"pgmajfault", sizeof("pgmajfault") - 1, kNotSet, stat_info_.pgMajFault},
-              // On latest kernel versions "kswapd_steal" was split by zones and became:
-              // "pgsteal_kswapd_dma" + "pgsteal_kswapd_normal" + "pgsteal_kswapd_movable"
-              {"pgsteal_kswapd_dma", sizeof("pgsteal_kswapd_dma") - 1, kNotSet, stat_info_.kswapdSteal},
-              {"pgsteal_kswapd_normal", sizeof("pgsteal_kswapd_normal") - 1, kNotSet, stat_info_.kswapdSteal},
-              {"pgsteal_kswapd_movable", sizeof("pgsteal_kswapd_movable") - 1, kNotSet, stat_info_.kswapdSteal},
-              {"kswapd_steal", sizeof("kswapd_steal") - 1, kNotSet, stat_info_.kswapdSteal},
-              {"pageoutrun", sizeof("pageoutrun") - 1, kNotSet, stat_info_.pageOutrun},
-              {"allocstall", sizeof("allocstall") - 1, kNotSet, stat_info_.allocStall}}) {}
+      // The order corresponds to the order in /proc/vmstat generated by the
+      // Linux kernel
+      keys_({{"nr_free_pages",
+              sizeof("nr_free_pages") - 1,
+              kNotSet,
+              stat_info_.nrFreePages},
+             {"nr_dirty", sizeof("nr_dirty") - 1, kNotSet, stat_info_.nrDirty},
+             {"nr_writeback",
+              sizeof("nr_writeback") - 1,
+              kNotSet,
+              stat_info_.nrWriteback},
+             {"pgpgin", sizeof("pgpgin") - 1, kNotSet, stat_info_.pgPgIn},
+             {"pgpgout", sizeof("pgpgout") - 1, kNotSet, stat_info_.pgPgOut},
+             {"pgmajfault",
+              sizeof("pgmajfault") - 1,
+              kNotSet,
+              stat_info_.pgMajFault},
+             // On latest kernel versions "kswapd_steal" was split by zones and
+             // became: "pgsteal_kswapd_dma" + "pgsteal_kswapd_normal" +
+             // "pgsteal_kswapd_movable"
+             {"pgsteal_kswapd_dma",
+              sizeof("pgsteal_kswapd_dma") - 1,
+              kNotSet,
+              stat_info_.kswapdSteal},
+             {"pgsteal_kswapd_normal",
+              sizeof("pgsteal_kswapd_normal") - 1,
+              kNotSet,
+              stat_info_.kswapdSteal},
+             {"pgsteal_kswapd_movable",
+              sizeof("pgsteal_kswapd_movable") - 1,
+              kNotSet,
+              stat_info_.kswapdSteal},
+             {"kswapd_steal",
+              sizeof("kswapd_steal") - 1,
+              kNotSet,
+              stat_info_.kswapdSteal},
+             {"pageoutrun",
+              sizeof("pageoutrun") - 1,
+              kNotSet,
+              stat_info_.pageOutrun},
+             {"allocstall",
+              sizeof("allocstall") - 1,
+              kNotSet,
+              stat_info_.allocStall}}) {}
 
 void VmStatFile::recalculateOffsets() {
   bool found = false;
@@ -547,7 +598,7 @@ void VmStatFile::recalculateOffsets() {
   auto nextKey = keys_.begin();
   auto keys_end = keys_.end();
   while (nextKey < keys_end && (end = std::strchr(start, '\n'))) {
-    if (end >= buffer_ + read_) {
+    if (std::distance(buffer_, end) > read_) {
       break;
     }
 
@@ -597,15 +648,14 @@ VmStatInfo VmStatFile::doRead(int fd, uint32_t ignored) {
     if (key.offset == kNotFound) {
       continue;
     }
-    if (key.offset == kNotSet ||
-      key.offset >= read_ ||
-      std::strncmp(key.name, buffer_ + key.offset, key.length) != 0) {
+    if (key.offset == kNotSet || key.offset >= read_ ||
+        std::strncmp(key.name, buffer_ + key.offset, key.length) != 0) {
       recalculateOffsets();
     }
     errno = 0;
     char* endptr = nullptr;
     char* start = buffer_ + key.offset + key.length + 1;
-    auto value = strtoull(start, &endptr, 10);
+    auto value = parse_ull(start, &endptr);
     if (errno == ERANGE && value == ULLONG_MAX) {
       throw std::runtime_error("Value out of range");
     } else if (endptr == start) {
@@ -617,48 +667,75 @@ VmStatInfo VmStatFile::doRead(int fd, uint32_t ignored) {
   return stat_info_;
 }
 
-ThreadStatHolder::ThreadStatHolder(uint32_t tid) :
-  stat_file_(),
-  schedstat_file_(),
-  sched_file_(),
-  last_info_(),
-  availableStatFilesMask_(0xff),
-  availableStatsMask_(0),
-  tid_(tid) {}
+ThreadStatHolder::ThreadStatHolder(uint32_t tid)
+    : stat_file_(),
+      schedstat_file_(),
+      sched_file_(),
+      last_info_(),
+      availableStatFilesMask_(0xff),
+      availableStatsMask_(0),
+      tid_(tid) {}
 
 ThreadStatInfo ThreadStatHolder::refresh(uint32_t requested_stats_mask) {
+  last_info_.statChangeMask = 0;
   // Assuming that /proc/self/<tid>/stat is always available.
   if (kFileStats[StatFileType::STAT] & requested_stats_mask) {
     if (stat_file_.get() == nullptr) {
       stat_file_ = std::make_unique<TaskStatFile>(tid_);
     }
     auto statInfo = stat_file_->refresh(requested_stats_mask);
+    last_info_.statChangeMask |=
+        (last_info_.cpuTimeMs != statInfo.cpuTime) ? StatType::CPU_TIME : 0;
     last_info_.cpuTimeMs = statInfo.cpuTime;
+    last_info_.statChangeMask |=
+        (last_info_.state != statInfo.state) ? StatType::STATE : 0;
     last_info_.state = statInfo.state;
+    last_info_.statChangeMask |=
+        (last_info_.majorFaults != statInfo.majorFaults)
+        ? StatType::MAJOR_FAULTS
+        : 0;
     last_info_.majorFaults = statInfo.majorFaults;
+    last_info_.statChangeMask |=
+        (last_info_.cpuNum != statInfo.cpuNum) ? StatType::CPU_NUM : 0;
     last_info_.cpuNum = statInfo.cpuNum;
+    last_info_.statChangeMask |=
+        (last_info_.kernelCpuTimeMs != statInfo.kernelCpuTimeMs)
+        ? StatType::KERNEL_CPU_TIME
+        : 0;
     last_info_.kernelCpuTimeMs = statInfo.kernelCpuTimeMs;
+    last_info_.statChangeMask |=
+        (last_info_.minorFaults != statInfo.minorFaults)
+        ? StatType::MINOR_FAULTS
+        : 0;
     last_info_.minorFaults = statInfo.minorFaults;
     availableStatsMask_ |=
-      kFileStats[StatFileType::STAT] & requested_stats_mask;
+        kFileStats[StatFileType::STAT] & requested_stats_mask;
   }
   // If /proc/self/<tid>/schedstat is requested, we will try to read it.
   // If we get exception on first read the availableStatFilesMask will be
   // updated respectively. The second time this stat file will be ignored.
   if ((availableStatFilesMask_ & StatFileType::SCHEDSTAT) &&
-    (kFileStats[StatFileType::SCHEDSTAT] & requested_stats_mask)) {
+      (kFileStats[StatFileType::SCHEDSTAT] & requested_stats_mask)) {
     if (schedstat_file_.get() == nullptr) {
       schedstat_file_ = std::make_unique<TaskSchedstatFile>(tid_);
     }
     try {
       auto schedstatInfo = schedstat_file_->refresh(requested_stats_mask);
+      last_info_.statChangeMask |=
+          (last_info_.waitToRunTimeMs != schedstatInfo.waitToRunTimeMs)
+          ? StatType::WAIT_TO_RUN_TIME
+          : 0;
       last_info_.waitToRunTimeMs = schedstatInfo.waitToRunTimeMs;
+      last_info_.highPrecisionCpuTimeMs |=
+          (last_info_.highPrecisionCpuTimeMs != schedstatInfo.cpuTimeMs)
+          ? StatType::HIGH_PRECISION_CPU_TIME
+          : 0;
       last_info_.highPrecisionCpuTimeMs = schedstatInfo.cpuTimeMs;
       availableStatsMask_ |= kFileStats[StatFileType::SCHEDSTAT];
     } catch (const std::system_error& e) {
       // If 'schedstat' file is absent do not attempt the second time
       availableStatFilesMask_ ^= StatFileType::SCHEDSTAT;
-      schedstat_file_.release();
+      schedstat_file_.reset(nullptr);
     }
   }
   // If /proc/self/<tid>/sched is requested, we will try to read it.
@@ -671,18 +748,33 @@ ThreadStatInfo ThreadStatHolder::refresh(uint32_t requested_stats_mask) {
     }
     try {
       auto schedInfo = sched_file_->refresh(requested_stats_mask);
+      last_info_.statChangeMask |=
+          (last_info_.nrVoluntarySwitches != schedInfo.nrVoluntarySwitches)
+          ? StatType::NR_VOLUNTARY_SWITCHES
+          : 0;
       last_info_.nrVoluntarySwitches = schedInfo.nrVoluntarySwitches;
+      last_info_.statChangeMask |=
+          (last_info_.nrInvoluntarySwitches != schedInfo.nrInvoluntarySwitches)
+          ? StatType::NR_INVOLUNTARY_SWITCHES
+          : 0;
       last_info_.nrInvoluntarySwitches = schedInfo.nrInvoluntarySwitches;
+      last_info_.statChangeMask |= (last_info_.iowaitSum != schedInfo.iowaitSum)
+          ? StatType::IOWAIT_SUM
+          : 0;
       last_info_.iowaitSum = schedInfo.iowaitSum;
+      last_info_.iowaitCount |= (last_info_.iowaitSum != schedInfo.iowaitCount)
+          ? StatType::IOWAIT_COUNT
+          : 0;
       last_info_.iowaitCount = schedInfo.iowaitCount;
       availableStatsMask_ |= sched_file_->availableStatsMask;
     } catch (const std::exception& e) {
       // If 'schedstat' file is absent do not attempt the second time
       availableStatFilesMask_ ^= StatFileType::SCHED;
-      schedstat_file_.release();
+      schedstat_file_.reset(nullptr);
     }
   }
   last_info_.availableStatsMask = availableStatsMask_;
+  last_info_.monotonicStatTime = monotonicTime();
   return last_info_;
 }
 
@@ -691,8 +783,9 @@ ThreadStatInfo ThreadStatHolder::getInfo() {
 }
 
 void ThreadCache::forEach(
-  stats_callback_fn callback,
-  uint32_t requested_stats_mask) {
+    stats_callback_fn callback,
+    uint32_t requested_stats_mask,
+    const std::unordered_set<int32_t>* black_list) {
   try {
     const auto& threads = util::threadListFromProcFs();
 
@@ -706,6 +799,9 @@ void ThreadCache::forEach(
     }
 
     for (auto tid : threads) {
+      if (black_list != nullptr && black_list->find(tid) != black_list->end()) {
+        continue;
+      }
       forThread(tid, callback, requested_stats_mask);
     }
   } catch (const std::system_error& e) {
@@ -715,10 +811,9 @@ void ThreadCache::forEach(
 }
 
 void ThreadCache::forThread(
-  uint32_t tid,
-  stats_callback_fn callback,
-  uint32_t requested_stats_mask) {
-
+    uint32_t tid,
+    stats_callback_fn callback,
+    uint32_t requested_stats_mask) {
   auto statIter = cache_.find(tid);
   if (statIter == cache_.end()) {
     cache_.emplace(std::make_pair(tid, ThreadStatHolder(tid)));
@@ -752,7 +847,7 @@ ThreadStatInfo ThreadCache::getRecentStats(int32_t tid) {
 int32_t ThreadCache::getStatsAvailabililty(int32_t tid) {
   int32_t stats_mask = 0;
   if (cache_.find(tid) != cache_.end()) {
-      stats_mask = cache_.at(tid).getInfo().availableStatsMask;
+    stats_mask = cache_.at(tid).getInfo().availableStatsMask;
   }
   return stats_mask;
 }
@@ -761,6 +856,6 @@ void ThreadCache::clear() {
   cache_.clear();
 }
 
-} // util
-} // profilo
-} // facebook
+} // namespace util
+} // namespace profilo
+} // namespace facebook

@@ -1,6 +1,5 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//build_defs:fb_core_android_library.bzl", "fb_core_android_library")
-load("//buck_imports:profilo_path.bzl", "profilo_path")
+load("//tools/build_defs/android:fb_core_android_library.bzl", "fb_core_android_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
 
 fb_core_android_library(
     name = "stacktrace",
@@ -13,7 +12,6 @@ fb_core_android_library(
         profilo_path("deps/soloader:soloader"),
         profilo_path("java/main/com/facebook/profilo/core:core"),
         profilo_path("java/main/com/facebook/profilo/core:events"),
-        profilo_path("java/main/com/facebook/profilo/experiments:experiments"),
         profilo_path("java/main/com/facebook/profilo/logger:logger"),
     ],
 )

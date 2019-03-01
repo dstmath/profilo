@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright 2004-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #pragma once
 
@@ -6,9 +20,9 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <cerrno>
 #include <string>
 #include <system_error>
-#include <cerrno>
 
 namespace facebook {
 namespace profilo {
@@ -28,13 +42,22 @@ enum StatType : int32_t {
   CPU_FREQ = 1 << 10,
   MINOR_FAULTS = 1 << 11,
   KERNEL_CPU_TIME = 1 << 12,
+  VMSTAT_NR_FREE_PAGES = 1 << 13,
+  VMSTAT_NR_DIRTY = 1 << 14,
+  VMSTAT_NR_WRITEBACK = 1 << 15,
+  VMSTAT_PGPGIN = 1 << 16,
+  VMSTAT_PGPGOUT = 1 << 17,
+  VMSTAT_PGMAJFAULT = 1 << 18,
+  VMSTAT_ALLOCSTALL = 1 << 19,
+  VMSTAT_PAGEOUTRUN = 1 << 20,
+  VMSTAT_KSWAPD_STEAL = 1 << 21,
 };
 
-template<class StatInfo>
+template <class StatInfo>
 class BaseStatFile {
-public:
-  explicit BaseStatFile(std::string path):
-    path_(path), fd_(-1), last_info_() {}
+ public:
+  explicit BaseStatFile(std::string path)
+      : path_(path), fd_(-1), last_info_() {}
 
   BaseStatFile() = delete;
   BaseStatFile(const BaseStatFile&) = delete;
@@ -66,9 +89,7 @@ public:
 
     if (lseek(fd_, 0, SEEK_SET)) {
       throw std::system_error(
-        errno,
-        std::system_category(),
-        "Could not rewind file");
+          errno, std::system_category(), "Could not rewind file");
     }
 
     last_info_ = doRead(fd_, requested_stats_mask);
@@ -76,26 +97,24 @@ public:
   }
 
   int doOpen(const std::string& path) {
-    int statFile = open(path.c_str(), O_SYNC|O_RDONLY);
+    int statFile = open(path.c_str(), O_SYNC | O_RDONLY);
 
     if (statFile == -1) {
       throw std::system_error(
-        errno,
-        std::system_category(),
-        "Could not open stat file");
+          errno, std::system_category(), "Could not open stat file");
     }
     return statFile;
   }
 
-protected:
+ protected:
   virtual StatInfo doRead(int fd, uint32_t requested_stats_mask) = 0;
 
-private:
+ private:
   std::string path_;
   int fd_;
   StatInfo last_info_;
 };
 
-} // util
-} // profilo
-} // facebook
+} // namespace util
+} // namespace profilo
+} // namespace facebook

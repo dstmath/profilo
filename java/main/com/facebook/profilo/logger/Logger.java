@@ -66,204 +66,33 @@ final public class Logger {
     mWorker = new AtomicReference<>(null);
   }
 
-  public static int writeEntryWithoutMatch(int provider, int type, int callID) {
-    if (!sInitialized) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    return writeEntryWithCursor(provider, type, callID, ProfiloConstants.NO_MATCH, 0, null);
-  }
+  public static final int SKIP_PROVIDER_CHECK = 1 << 0;
+  public static final int FILL_TIMESTAMP = 1 << 1;
+  public static final int FILL_TID = 1 << 2;
 
-  public static int writeEntryWithoutMatch(
+  public static int writeStandardEntry(
       int provider,
+      int flags,
       int type,
-      int callID,
-      long intExtra) {
-    if (!sInitialized) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    return writeEntryWithCursor(provider, type, callID, ProfiloConstants.NO_MATCH, intExtra, null);
-  }
-
-  public static int writeEntryWithoutMatch(
-      int provider,
-      int type,
-      int callID,
-      long intExtra,
-      long monotonicTime) {
-    if (!sInitialized
-        || (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM
-            && !TraceEvents.isEnabled(provider))) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    return loggerWriteWithMonotonicTime(
-        type, callID, ProfiloConstants.NO_MATCH, intExtra, monotonicTime);
-  }
-
-  /**
-   * Logging method for thread specific counters
-   */
-  public static int writeEntryWithoutMatchForThread(
-      int provider,
+      long timestamp,
       int tid,
-      int type,
-      int callID,
-      long intExtra) {
-    if (!sInitialized
-        || (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM
-            && !TraceEvents.isEnabled(provider))) {
+      int arg1 /* callid */,
+      int arg2 /* matchid */,
+      long arg3 /* extra */) {
+    if (sInitialized && ((flags & SKIP_PROVIDER_CHECK) != 0 || TraceEvents.isEnabled(provider))) {
+      return loggerWriteStandardEntry(flags, type, timestamp, tid, arg1, arg2, arg3);
+    } else {
       return ProfiloConstants.TRACING_DISABLED;
     }
-
-    return loggerWriteForThread(tid, type, callID, ProfiloConstants.NO_MATCH, intExtra);
   }
 
-  public static int writeEntry(int provider, int type, int callID, int matchID) {
-    if (!sInitialized) {
+  public static int writeBytesEntry(
+      int provider, int flags, int type, int arg1 /* matchid */, String arg2 /* bytes */) {
+    if (sInitialized && ((flags & SKIP_PROVIDER_CHECK) != 0 || TraceEvents.isEnabled(provider))) {
+      return loggerWriteBytesEntry(flags, type, arg1, arg2);
+    } else {
       return ProfiloConstants.TRACING_DISABLED;
     }
-    return writeEntryWithCursor(
-        provider,
-        type,
-        callID,
-        matchID,
-        0,
-        null);
-  }
-
-  public static int writeEntry(
-      int provider,
-      int type,
-      int callID,
-      int matchID,
-      long intExtra) {
-    if (!sInitialized) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    return writeEntryWithCursor(
-        provider,
-        type,
-        callID,
-        matchID,
-        intExtra,
-        null);
-  }
-
-  public static int writeEntry(
-      int provider,
-      int type,
-      int matchID,
-      String str) {
-    if (!sInitialized) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    return writeEntryWithCursor(
-        provider,
-        type,
-        0,
-        matchID,
-        0,
-        str);
-  }
-
-  public static int writeEntryWithString(
-      int provider,
-      int type,
-      int callID,
-      int matchID,
-      long intExtra,
-      @Nullable String strKey,
-      String strValue) {
-
-    // Early bailout for disabled providers too to avoid generating the
-    // STRING_VALUE entries.
-    if (!sInitialized
-        || (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM
-            && !TraceEvents.isEnabled(provider))) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    int returnedMatchID = writeEntryWithCursor(
-        provider,
-        type,
-        callID,
-        matchID,
-        intExtra,
-        null);
-    return writeKeyValueStringWithMatch(provider, returnedMatchID, strKey, strValue);
-  }
-
-  public static int writeEntryWithStringWithNoMatch(
-      int provider,
-      int type,
-      int callID,
-      long intExtra,
-      @Nullable String strKey,
-      String strValue) {
-    if (!sInitialized
-        || (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM
-            && !TraceEvents.isEnabled(provider))) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    int returnedMatchID =
-        writeEntryWithCursor(provider, type, callID, ProfiloConstants.NO_MATCH, intExtra, null);
-    return writeKeyValueStringWithMatch(provider, returnedMatchID, strKey, strValue);
-  }
-
-  public static int writeEntryWithStringWithNoMatch(
-      int provider,
-      int type,
-      int callID,
-      long intExtra,
-      @Nullable String strKey,
-      String strValue,
-      long monotonicTime) {
-    if (!sInitialized
-        || (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM
-            && !TraceEvents.isEnabled(provider))) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-    int returnedMatchID =
-        loggerWriteWithMonotonicTime(
-            type, callID, ProfiloConstants.NO_MATCH, intExtra, monotonicTime);
-    return writeKeyValueStringWithMatch(provider, returnedMatchID, strKey, strValue);
-  }
-
-  public static int writeKeyValueStringWithMatch(
-      int provider,
-      int matchID,
-      @Nullable String strKey,
-      String strValue) {
-
-    if (strKey != null) {
-      matchID = writeEntry(
-          provider,
-          EntryType.STRING_KEY,
-          matchID,
-          strKey);
-    }
-    return writeEntry(
-        provider,
-        EntryType.STRING_VALUE,
-        matchID,
-        strValue);
-  }
-
-  public static int writeStringKeyValueClassWithMatch(
-      int provider,
-      int matchID,
-      String strKey,
-      long clsId) {
-    matchID = writeEntry(
-        provider,
-        EntryType.STRING_KEY,
-        matchID,
-        strKey);
-
-    return writeEntry(
-        provider,
-        EntryType.CLASS_VALUE,
-        0,
-        matchID,
-        clsId);
   }
 
   public static void postCreateTrace(long traceId, int flags, int timeoutMs) {
@@ -309,36 +138,28 @@ final public class Logger {
   }
 
   private static void postFinishTrace(int entryType, long traceId) {
-    if (sInitialized) {
-      writeEntryWithCursor(
-          ProfiloConstants.PROVIDER_PROFILO_SYSTEM,
-          entryType,
-          ProfiloConstants.NO_CALLSITE,
-          ProfiloConstants.NO_MATCH,
-          traceId,
-          null);
-    }
+    writeStandardEntry(
+        ProfiloConstants.NONE,
+        SKIP_PROVIDER_CHECK | FILL_TIMESTAMP | FILL_TID,
+        entryType,
+        ProfiloConstants.NONE,
+        ProfiloConstants.NONE,
+        ProfiloConstants.NONE,
+        ProfiloConstants.NONE,
+        traceId);
   }
 
-  private static native int loggerWrite(
+  private static native int loggerWriteStandardEntry(
+      int flags,
       int type,
-      int callid,
-      int matchid,
-      long extra);
-
-  private static native int loggerWriteWithMonotonicTime(
-      int type,
-      int callid,
-      int matchid,
-      long extra,
-      long monotonicTime);
-
-  private static native int loggerWriteForThread(
+      long timestamp,
       int tid,
-      int type,
-      int callid,
-      int matchid,
-      long extra);
+      int arg1 /* callid */,
+      int arg2 /* matchid */,
+      long arg3 /* extra */);
+
+  private static native int loggerWriteBytesEntry(
+      int flags, int type, int arg1 /* matchid */, String arg2 /* bytes */);
 
   private static native int loggerWriteAndWakeupTraceWriter(
       NativeTraceWriter writer,
@@ -347,26 +168,6 @@ final public class Logger {
       int callid,
       int matchid,
       long extra);
-
-  private static native int loggerWriteString(int type, int matchid, String str);
-
-  private static int writeEntryWithCursor(
-      int provider,
-      int type,
-      int callID,
-      int matchID,
-      long extra,
-      @Nullable String str) {
-
-    if (provider != ProfiloConstants.PROVIDER_PROFILO_SYSTEM && !TraceEvents.isEnabled(provider)) {
-      return ProfiloConstants.TRACING_DISABLED;
-    }
-
-    if (str != null) {
-      return loggerWriteString(type, matchID, str);
-    }
-    return loggerWrite(type, callID, matchID, extra);
-  }
 
   @SuppressLint("BadMethodUse-java.lang.Thread.start")
   private static void startWorkerThreadIfNecessary() {

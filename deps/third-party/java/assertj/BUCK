@@ -1,5 +1,4 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//build_defs:profilo_oss_defs.bzl", "profilo_oss_maven_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_oss_maven_library")
 
 profilo_oss_maven_library(
     name = "assertj-core",

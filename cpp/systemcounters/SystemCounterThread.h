@@ -17,41 +17,46 @@
 #pragma once
 
 #include <fbjni/fbjni.h>
+#include <profilo/Logger.h>
 #include <util/ProcFs.h>
-#include <util/SysFs.h>
 
-#include <mutex>
-#include <unordered_map>
+#include "ProcessCounters.h"
+#include "SystemCounters.h"
+#include "ThreadCounters.h"
 
 namespace facebook {
 namespace profilo {
 
-class SystemCounterThread : public facebook::jni::HybridClass<SystemCounterThread> {
+class SystemCounterThread
+    : public facebook::jni::HybridClass<SystemCounterThread> {
  public:
-  constexpr static auto kJavaDescriptor = "Lcom/facebook/profilo/provider/systemcounters/SystemCounterThread;";
+  constexpr static auto kJavaDescriptor =
+      "Lcom/facebook/profilo/provider/systemcounters/SystemCounterThread;";
 
-  static facebook::jni::local_ref<jhybriddata> initHybrid(facebook::jni::alias_ref<jclass>);
+  static facebook::jni::local_ref<jhybriddata> initHybrid(
+      facebook::jni::alias_ref<jclass>);
 
   static void registerNatives();
 
   void logCounters();
-  void logThreadCounters(int tid);
-  void logTraceAnnotations(int tid);
+  void logHighFrequencyThreadCounters();
+  void logTraceAnnotations();
 
  private:
   friend HybridBase;
   SystemCounterThread() = default;
 
-  std::mutex mtx_; // Guards cache_
-  util::ThreadCache cache_;
-  std::unique_ptr<util::TaskStatFile> processStatFile_;
-  std::unique_ptr<util::CpuFrequencyStats> cpuFrequencyStats_;
-  std::unique_ptr<util::VmStatFile> vmStats_;
-  int32_t extraAvailableCounters_;
+  ThreadCounters<util::ThreadCache, Logger> threadCounters_;
+  ProcessCounters<util::TaskStatFile, util::TaskSchedFile, Logger>
+      processCounters_;
+  SystemCounters<Logger> systemCounters_;
 
-  void logProcessCounters();
-  void logCpuFrequencyInfo();
-  void logVmStatCounters();
+  int32_t extraAvailableCounters_;
+  bool highFrequencyMode_;
+
+  void setHighFrequencyMode(bool enabled) {
+    highFrequencyMode_ = enabled;
+  }
 };
 
 } // namespace profilo

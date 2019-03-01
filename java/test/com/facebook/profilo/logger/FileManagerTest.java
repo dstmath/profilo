@@ -18,7 +18,10 @@ package com.facebook.profilo.logger;
 
 import static org.assertj.core.api.Java6Assertions.assertThat;
 import static org.junit.Assert.fail;
+import static org.powermock.api.mockito.PowerMockito.mock;
+import static org.powermock.api.mockito.PowerMockito.when;
 
+import android.content.Context;
 import com.google.common.base.Function;
 import com.google.common.io.Files;
 import java.io.File;
@@ -29,21 +32,25 @@ import javax.annotation.Nullable;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 
 public class FileManagerTest {
 
   private File mFolder;
   private FileManager mFileManager;
   private File mTempFile;
+  private Context mContext;
 
   @Before
   public void setup() throws IOException {
     mFolder = Files.createTempDir();
+    mContext = mock(Context.class);
     mTempFile = File.createTempFile("fake-trace-", FileManager.TMP_SUFFIX, mFolder);
     Files.touch(mTempFile);
 
-    mFileManager = new FileManager(mFolder);
+    when(mContext.getCacheDir()).thenReturn(mFolder);
+    when(mContext.getFilesDir()).thenReturn(mFolder);
+    when(mContext.getApplicationContext()).thenReturn(mContext);
+    mFileManager = new FileManager(mContext, mFolder);
     mFileManager.setTrimThreshold(Integer.MAX_VALUE);
     // Age out after a day
     mFileManager.setMaxScheduledAge(TimeUnit.DAYS.toSeconds(1));

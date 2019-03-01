@@ -23,8 +23,14 @@ public final class Identifiers {
   public static final int GLOBAL_ALLOC_COUNT = 9240576 | 17; // = 9240593
   public static final int GLOBAL_ALLOC_SIZE = 9240576 | 18; // = 9240594
   public static final int GLOBAL_GC_INVOCATION_COUNT = 9240576 | 19; // = 9240595
+  public static final int GLOBAL_BLOCKING_GC_COUNT = 9240576 | 88; // = 9240664
+  public static final int GLOBAL_GC_TIME = 9240576 | 89; // = 9240665
+  public static final int GLOBAL_BLOCKING_GC_TIME = 9240576 | 90; // = 9240666
   public static final int JAVA_FREE_BYTES = 9240576 | 58; // = 9240634
   public static final int JAVA_MAX_BYTES = 9240576 | 59; // = 9240635
   public static final int JAVA_ALLOC_BYTES = 9240576 | 60; // = 9240636
   public static final int JAVA_TOTAL_BYTES = 9240576 | 61; // = 9240637
+  public static final int ACTIVE_PROVIDERS = 8126464 | 50; // = 8126514
+  public static final int APP_VERSION_CODE = 8126464 | 54; // = 8126518
+  public static final int APP_VERSION_NAME = 8126464 | 55; // = 8126519
 }

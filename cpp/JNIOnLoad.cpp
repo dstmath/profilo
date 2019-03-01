@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-
-#include <jni.h>
-#include <fbjni/fbjni.h>
-#include <fbjni/detail/utf8.h>
 #include <fb/ALog.h>
 #include <fb/xplat_init.h>
+#include <fbjni/detail/utf8.h>
+#include <fbjni/fbjni.h>
+#include <jni.h>
 
 #include <cstring>
+#include <unordered_map>
 
 #include <profilo/Logger.h>
 #include <profilo/RingBuffer.h>
@@ -40,105 +40,46 @@ const char* LoggerType = "com/facebook/profilo/logger/Logger";
 /// product write APIs
 ///
 
-static jint loggerWrite(
-    JNIEnv* env,
-    jobject cls,
-    jint type,
-    jint arg1,
-    jint arg2,
-    jlong arg3
-) {
-  return Logger::get().write(StandardEntry {
-    .id = 0,
-    .type = static_cast<decltype(StandardEntry::type)>(type),
-    .timestamp = monotonicTime(),
-    .tid = threadID(),
-    .callid = arg1,
-    .matchid = arg2,
-    .extra = arg3,
-  });
-}
+// These flags should match the ones from Logger.java
+static constexpr uint32_t FILL_TIMESTAMP = 1 << 1;
+static constexpr uint32_t FILL_TID = 1 << 2;
 
-static jint loggerWriteWithMonotonicTime(
+static jint loggerWriteStandardEntry(
     JNIEnv* env,
     jobject cls,
+    jint flags,
     jint type,
-    jint arg1,
-    jint arg2,
-    jlong arg3,
-    jlong time)
-{
-  return Logger::get().write(StandardEntry {
-    .id = 0,
-    .type = static_cast<decltype(StandardEntry::type)>(type),
-    .timestamp = time,
-    .tid = threadID(),
-    .callid = arg1,
-    .matchid = arg2,
-    .extra = arg3,
-  });
-}
-
-static jint loggerWriteForThread(
-    JNIEnv* env,
-    jobject cls,
+    jlong timestamp,
     jint tid,
-    jint type,
     jint arg1,
     jint arg2,
-    jlong arg3
-) {
-  return Logger::get().write(StandardEntry {
-    .id = 0,
-    .type = static_cast<decltype(StandardEntry::type)>(type),
-    .timestamp = monotonicTime(),
-    .tid = tid,
-    .callid = arg1,
-    .matchid = arg2,
-    .extra = arg3,
-  });
-}
-
-static jint loggerWriteAndWakeupTraceWriter(
-    fbjni::alias_ref<jobject> cls,
-    writer::NativeTraceWriter* writer,
-    jlong traceId,
-    jint type,
-    jint arg1,
-    jint arg2,
-    jlong arg3
-) {
-  if (writer == nullptr) {
-    throw std::invalid_argument("writer cannot be null");
+    jlong arg3) {
+  if (flags & FILL_TIMESTAMP) {
+    timestamp = monotonicTime();
   }
 
-  //
-  // We know the buffer is initialized, NativeTraceWriter is already using it.
-  // Also, currentTail is only used because Cursor is not default constructible.
-  //
-  TraceBuffer::Cursor cursor = RingBuffer::get().currentTail();
-  jint id = Logger::get().writeAndGetCursor(StandardEntry {
-    .id = 0,
-    .type = static_cast<decltype(StandardEntry::type)>(type),
-    .timestamp = monotonicTime(),
-    .tid = threadID(),
-    .callid = arg1,
-    .matchid = arg2,
-    .extra = arg3,
-  },
-  cursor);
+  if (flags & FILL_TID) {
+    tid = threadID();
+  }
 
-  writer->submit(cursor, traceId);
-  return id;
+  return Logger::get().write(StandardEntry{
+      .id = 0,
+      .type = static_cast<decltype(StandardEntry::type)>(type),
+      .timestamp = timestamp,
+      .tid = tid,
+      .callid = arg1,
+      .matchid = arg2,
+      .extra = arg3,
+  });
 }
 
-static jint loggerWriteString(
+static jint loggerWriteBytesEntry(
     JNIEnv* env,
     jobject cls,
+    jint flags,
     jint type,
     jint arg1,
-    jstring arg2
-) {
+    jstring arg2) {
   const auto kMaxJavaStringLength = 512;
   auto len = std::min(env->GetStringLength(arg2), kMaxJavaStringLength);
   uint8_t bytes[len]; // we're filtering to ASCII so one char must be one byte
@@ -157,30 +98,68 @@ static jint loggerWriteString(
     }
   }
   return Logger::get().writeBytes(
-    static_cast<EntryType>(type),
-    arg1,
-    bytes,
-    len);
+      static_cast<EntryType>(type), arg1, bytes, len);
 }
 
-static jboolean isProviderEnabled(JNIEnv* env, jobject cls, jint provider) {
-  return TraceProviders::get().isEnabled(static_cast<uint32_t>(provider));
+static jint loggerWriteAndWakeupTraceWriter(
+    fbjni::alias_ref<jobject> cls,
+    writer::NativeTraceWriter* writer,
+    jlong traceId,
+    jint type,
+    jint arg1,
+    jint arg2,
+    jlong arg3) {
+  if (writer == nullptr) {
+    throw std::invalid_argument("writer cannot be null");
+  }
+
+  //
+  // We know the buffer is initialized, NativeTraceWriter is already using it.
+  // Also, currentTail is only used because Cursor is not default constructible.
+  //
+  TraceBuffer::Cursor cursor = RingBuffer::get().currentTail();
+  jint id = Logger::get().writeAndGetCursor(
+      StandardEntry{
+          .id = 0,
+          .type = static_cast<decltype(StandardEntry::type)>(type),
+          .timestamp = monotonicTime(),
+          .tid = threadID(),
+          .callid = arg1,
+          .matchid = arg2,
+          .extra = arg3,
+      },
+      cursor);
+
+  writer->submit(cursor, traceId);
+  return id;
 }
 
-static jint enabledProvidersMask(JNIEnv* env, jobject cls, jint providers) {
-  return TraceProviders::get().enabledMask(static_cast<uint32_t>(providers));
+static jint enableProviders(JNIEnv* env, jobject cls, jint providers) {
+  return TraceProviders::get().enableProviders(
+      static_cast<uint32_t>(providers));
 }
 
-static void enableProviders(JNIEnv* env, jobject cls, jint providers) {
-  TraceProviders::get().enableProviders(static_cast<uint32_t>(providers));
-}
-
-static void disableProviders(JNIEnv* env, jobject cls, jint providers) {
-  TraceProviders::get().disableProviders(static_cast<uint32_t>(providers));
+static jint disableProviders(JNIEnv* env, jobject cls, jint providers) {
+  return TraceProviders::get().disableProviders(
+      static_cast<uint32_t>(providers));
 }
 
 static void clearAllProviders(JNIEnv* env, jobject cls) {
   TraceProviders::get().clearAllProviders();
+}
+
+static void initProviderNames(
+    fbjni::alias_ref<jobject> cls,
+    fbjni::alias_ref<fbjni::JArrayInt> provider_ids,
+    fbjni::alias_ref<fbjni::jtypeArray<jstring>> provider_names) {
+  auto provider_ids_array = provider_ids->pin();
+  auto size = provider_ids_array.size();
+  std::unordered_map<std::string, uint32_t> provider_names_map;
+  for (int i = 0; i < size; i++) {
+    provider_names_map.emplace(
+        provider_names->getElement(i)->toStdString(), provider_ids_array[i]);
+  }
+  TraceProviders::get().initProviderNames(std::move(provider_names_map));
 }
 
 static void initRingBuffer(JNIEnv* env, jobject cls, jint size) {
@@ -195,25 +174,29 @@ using namespace facebook;
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
   return xplat::initialize(vm, [] {
     fbjni::registerNatives(
-      profilo::TraceEventsType,
-      {
-        makeNativeMethod("nativeIsEnabled", profilo::isProviderEnabled),
-        makeNativeMethod("nativeEnabledMask", profilo::enabledProvidersMask),
-        makeNativeMethod("enableProviders", profilo::enableProviders),
-        makeNativeMethod("disableProviders", profilo::disableProviders),
-        makeNativeMethod("clearAllProviders", profilo::clearAllProviders),
-      });
+        profilo::TraceEventsType,
+        {
+            makeNativeMethod("nativeEnableProviders", profilo::enableProviders),
+            makeNativeMethod(
+                "nativeDisableProviders", profilo::disableProviders),
+            makeNativeMethod(
+                "nativeClearAllProviders", profilo::clearAllProviders),
+            makeNativeMethod(
+                "nativeInitProviderNames", profilo::initProviderNames),
+        });
 
     fbjni::registerNatives(
-      profilo::LoggerType,
-      {
-        makeNativeMethod("loggerWrite", profilo::loggerWrite),
-        makeNativeMethod("loggerWriteWithMonotonicTime", profilo::loggerWriteWithMonotonicTime),
-        makeNativeMethod("loggerWriteForThread", profilo::loggerWriteForThread),
-        makeNativeMethod("loggerWriteString", profilo::loggerWriteString),
-        makeNativeMethod("loggerWriteAndWakeupTraceWriter", profilo::loggerWriteAndWakeupTraceWriter),
-        makeNativeMethod("nativeInitRingBuffer", profilo::initRingBuffer),
-      });
+        profilo::LoggerType,
+        {
+            makeNativeMethod(
+                "loggerWriteStandardEntry", profilo::loggerWriteStandardEntry),
+            makeNativeMethod(
+                "loggerWriteBytesEntry", profilo::loggerWriteBytesEntry),
+            makeNativeMethod(
+                "loggerWriteAndWakeupTraceWriter",
+                profilo::loggerWriteAndWakeupTraceWriter),
+            makeNativeMethod("nativeInitRingBuffer", profilo::initRingBuffer),
+        });
 
     profilo::writer::NativeTraceWriter::registerNatives();
   });

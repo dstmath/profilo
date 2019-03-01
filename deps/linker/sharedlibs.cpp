@@ -17,7 +17,7 @@
 #include <linker/sharedlibs.h>
 #include <linker/locks.h>
 
-#include <fb/Build.h>
+#include <build/build.h>
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -40,19 +40,24 @@ static std::unordered_map<std::string, elfSharedLibData>& sharedLibData() {
 
 template <typename Arg>
 bool addSharedLib(char const* libname, Arg&& arg) {
-#if !defined(__aarch64__)
-  if (sharedLibData().find(basename(libname)) == sharedLibData().end()) {
-    try {
-      elfSharedLibData data(std::forward<Arg>(arg));
-      WriterLock wl(&sharedLibsMutex_);
-      return sharedLibData().insert(std::make_pair(basename(libname), std::move(data))).second;
-    } catch (input_parse_error&) {
-      // elfSharedLibData ctor will throw if it is unable to parse input
-      // just ignore it and don't add the library, we'll return false
+  {
+    ReaderLock rl(&sharedLibsMutex_);
+    // the common path will be duplicate entries, so skip the weight of
+    // elfSharedLibData construction and grabbing a writer lock, if possible
+    if (sharedLibData().find(basename(libname)) != sharedLibData().end()) {
+      return false;
     }
   }
-#endif
-  return false;
+
+  try {
+    elfSharedLibData data(std::forward<Arg>(arg));
+    WriterLock wl(&sharedLibsMutex_);
+    return sharedLibData().insert(std::make_pair(basename(libname), std::move(data))).second;
+  } catch (input_parse_error&) {
+    // elfSharedLibData ctor will throw if it is unable to parse input
+    // just ignore it and don't add the library
+    return false;
+  }
 }
 
 bool ends_with(const char* str, const char* ending) {
@@ -99,7 +104,7 @@ using namespace facebook::linker;
 
 int
 refresh_shared_libs() {
-  if (facebook::build::Build::getAndroidSdk() >= ANDROID_L) {
+  if (facebook::build::getAndroidSdk() >= ANDROID_L) {
     static auto dl_iterate_phdr =
       reinterpret_cast<int(*)(int(*)(dl_phdr_info*, size_t, void*), void*)>(
         dlsym(RTLD_DEFAULT, "dl_iterate_phdr"));
@@ -109,13 +114,23 @@ refresh_shared_libs() {
       return 1;
     }
 
-    dl_iterate_phdr(+[](dl_phdr_info* info, size_t, void*) {
+    std::vector<dl_phdr_info> to_add;
+    dl_iterate_phdr(+[](dl_phdr_info* info, size_t, void* vec) {
+      auto to_add = reinterpret_cast<std::vector<dl_phdr_info>*>(vec);
       if (info->dlpi_name && ends_with(info->dlpi_name, ".so")) {
-        addSharedLib(info->dlpi_name, info);
+        // dl_iterate_phdr holds a global dl_* lock while invoking this and
+        // addSharedLib grabs its own locks. Other functions will grab those
+        // same locks and then call dl_* functions, which would result in a
+        // lock inversion.
+        to_add->push_back(*info);
       }
       return 0;
-    }, nullptr);
+    }, &to_add);
+    for (auto info : to_add) {
+      addSharedLib(info.dlpi_name, &info);
+    }
   } else {
+#ifndef __LP64__ /* prior to android L there were no 64-bit devices anyway */
     soinfo* si = reinterpret_cast<soinfo*>(dlopen(nullptr, RTLD_LOCAL));
 
     if (si == nullptr) {
@@ -127,6 +142,7 @@ refresh_shared_libs() {
         addSharedLib(si->link_map.l_name, si);
       }
     }
+#endif
   }
   return 0;
 }

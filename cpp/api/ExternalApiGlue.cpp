@@ -20,14 +20,16 @@
 extern "C" {
 #endif
 
-#define PROFILO_EXPORT __attribute__((visibility ("default")))
+#define PROFILO_EXPORT __attribute__((visibility("default")))
 
-PROFILO_EXPORT ProfiloApi profilo_api_int {
-  .mark_start = nullptr,
-  .mark_end = nullptr,
-  .log_classload_start = nullptr,
-  .log_classload_end = nullptr,
-  .log_classload_failed = nullptr,
+PROFILO_EXPORT ProfiloApi profilo_api_int{
+    .mark_start = nullptr,
+    .mark_end = nullptr,
+    .log_classload_start = nullptr,
+    .log_classload_end = nullptr,
+    .log_classload_failed = nullptr,
+    .is_enabled = nullptr,
+    .register_external_tracer_callback = nullptr,
 };
 
 #ifdef __cplusplus

@@ -1,6 +1,5 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/android:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
 
 PROVIDER_EXPORTED_HEADERS = ["TraceProviders.h"]
 
@@ -79,7 +78,7 @@ fb_xplat_cxx_library(
         "-std=gnu++14",
     ],
     soname = "libprofilo.$(ext)",
-    supported_platforms_regex = "^android-(armv7|arm64|x86)$",
+    supported_platforms_regex = "^android-(armv7|arm64|x86|x86_64)$",
     visibility = [
         profilo_path("..."),
         "//perftests/benchmarks/java/com/facebook/benchmarks/profilo/...",

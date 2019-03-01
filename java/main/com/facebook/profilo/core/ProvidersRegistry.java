@@ -18,6 +18,7 @@ package com.facebook.profilo.core;
 
 import com.facebook.proguard.annotations.DoNotStrip;
 import java.util.List;
+import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
@@ -29,7 +30,7 @@ import javax.annotation.Nullable;
  * <p>The general pattern is:
  *
  * <pre>
- *   class MyProvider extends TraceOrchestrator.TraceProvider {
+ *   class MyProvider extends BaseTraceProvider {
  *   public static final int PROVIDER_MYPROVIDER = ProviderRegistry.newProvider("myprovider");
  *   ...
  *   }
@@ -66,5 +67,9 @@ public final class ProvidersRegistry {
   /** Retrieve the list of the registered provider names. */
   public static List<String> getRegisteredProviders() {
     return sRegistry.getRegisteredEntries();
+  }
+
+  public static Set<String> getRegisteredProvidersByBitMask(int bitMask) {
+    return sRegistry.getRegisteredEntriesByBitMask(bitMask);
   }
 }

@@ -18,7 +18,7 @@
 #include <linker/locks.h>
 #include <linker/elfSharedLibData.h>
 
-#include <fb/Build.h>
+#include <build/build.h>
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -45,7 +45,7 @@
 
 #define DT_GNU_HASH	0x6ffffef5	/* GNU-style hash table.  */
 
-#if defined(__x86__64__) || defined(__aarch64__)
+#if defined(__x86_64__) || defined(__aarch64__)
 # define ELF_RELOC_TYPE ELF64_R_TYPE
 # define ELF_RELOC_SYM  ELF64_R_SYM
 #else
@@ -168,7 +168,7 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
         // We don't have to ever worry about indexing into invalid chains_ data, because the
         // chain-start indices that live in buckets_ are indices into dynSymbolsTable and will thus
         // also never be less than symoffset_.
-        gnuHash_.chains_ = &gnuHash_.buckets_[gnuHash_.numbuckets_ - gnuHash_.symoffset_];
+        gnuHash_.chains_ = gnuHash_.buckets_ + gnuHash_.numbuckets_ - gnuHash_.symoffset_;
 
         // verify that bloom_size_ is a power of 2
         if ((((uint32_t)(gnuHash_.bloom_size_ - 1)) & gnuHash_.bloom_size_) != 0) {
@@ -193,7 +193,7 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
   }
 }
 
-#if !defined(__aarch64__)
+#ifndef __LP64__
 elfSharedLibData::elfSharedLibData(soinfo const* si) {
   pltRelocationsLen = si->plt_rel_count;
   pltRelocations = si->plt_rel;
@@ -209,7 +209,7 @@ elfSharedLibData::elfSharedLibData(soinfo const* si) {
 
   gnuHash_ = {};
 
-  if (facebook::build::Build::getAndroidSdk() >= 17) {
+  if (facebook::build::getAndroidSdk() >= 17) {
     loadBias = si->load_bias;
   } else {
     loadBias = si->base;

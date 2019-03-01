@@ -13,16 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <atomic>
-#include <unistd.h>
 #include <fb/log.h>
+#include <unistd.h>
+#include <atomic>
 
-#include "profiler/BaseTracer.h"
 #include "profiler/ArtUnwindcTracer.h"
+#include "profiler/BaseTracer.h"
 #include "profilo/Logger.h"
 
 #include "profiler/unwindc/runtime.h"
-
 
 namespace facebook {
 namespace profilo {
@@ -50,7 +49,7 @@ static constexpr ArtUnwindcVersion kVersion = kArtUnwindc712;
  */
 namespace ANDROID_NAMESPACE { // ANDROID_NAMESPACE is a preprocessor variable
 #include "profiler/unwindc/unwinder.h"
-} // namespace android_*
+} // namespace ANDROID_NAMESPACE
 
 using namespace ANDROID_NAMESPACE;
 
@@ -59,10 +58,11 @@ namespace {
 struct unwinder_data {
   ucontext_t* ucontext;
   int64_t* frames;
+  char const** method_names;
+  char const** class_descriptors;
   uint8_t depth;
   uint8_t max_depth;
 };
-
 
 bool unwind_cb(uintptr_t frame, void* data) {
   unwinder_data* ud = reinterpret_cast<unwinder_data*>(data);
@@ -70,24 +70,40 @@ bool unwind_cb(uintptr_t frame, void* data) {
     // stack overflow, stop the traversal
     return false;
   }
-  ud->frames[ud->depth++] = get_method_trace_id(frame);
+  ud->frames[ud->depth] = get_method_trace_id(frame);
+
+  if (ud->method_names != nullptr && ud->class_descriptors != nullptr) {
+    auto declaring_class = get_declaring_class(frame);
+    auto class_string_t = get_class_descriptor(declaring_class);
+    auto method_string_t = get_method_name(frame);
+    ud->method_names[ud->depth] = method_string_t.data;
+    ud->class_descriptors[ud->depth] = class_string_t.data;
+  }
+
+  ++ud->depth;
   return true;
 }
 
-} // anonymous
+} // namespace
 
-template<> ArtUnwindcTracer<kVersion>::ArtUnwindcTracer() {}
+template <>
+ArtUnwindcTracer<kVersion>::ArtUnwindcTracer() {}
 
-template<> bool ArtUnwindcTracer<kVersion>::collectStack(
-      ucontext_t* ucontext,
-      int64_t* frames,
-      uint8_t& depth,
-      uint8_t max_depth) {
-  unwinder_data data {
-    .ucontext = ucontext,
-    .frames = frames,
-    .depth = 0,
-    .max_depth = max_depth,
+template <>
+bool ArtUnwindcTracer<kVersion>::collectJavaStack(
+    ucontext_t* ucontext,
+    int64_t* frames,
+    char const** method_names,
+    char const** class_descriptors,
+    uint8_t& depth,
+    uint8_t max_depth) {
+  unwinder_data data{
+      .ucontext = ucontext,
+      .frames = frames,
+      .method_names = method_names,
+      .class_descriptors = class_descriptors,
+      .depth = 0,
+      .max_depth = max_depth,
   };
   depth = 0;
   if (!unwind(&unwind_cb, &data)) {
@@ -97,31 +113,39 @@ template<> bool ArtUnwindcTracer<kVersion>::collectStack(
   return true;
 }
 
-template<> void ArtUnwindcTracer<kVersion>::flushStack(
+template <>
+bool ArtUnwindcTracer<kVersion>::collectStack(
+    ucontext_t* ucontext,
+    int64_t* frames,
+    uint8_t& depth,
+    uint8_t max_depth) {
+  return collectJavaStack(ucontext, frames, nullptr, nullptr, depth, max_depth);
+}
+
+template <>
+void ArtUnwindcTracer<kVersion>::flushStack(
     int64_t* frames,
     uint8_t depth,
     int tid,
     int64_t time_) {
-
   Logger::get().writeStackFrames(
-    tid,
-    static_cast<int64_t>(time_),
-    frames,
-    depth);
+      tid, static_cast<int64_t>(time_), frames, depth);
 }
 
-template<> void ArtUnwindcTracer<kVersion>::prepare() {
+template <>
+void ArtUnwindcTracer<kVersion>::prepare() {
   // Preinitialize static state.
 
-  (void) get_art_thread();
+  (void)get_art_thread();
 }
 
-template<> void ArtUnwindcTracer<kVersion>::startTracing() {
+template <>
+void ArtUnwindcTracer<kVersion>::startTracing() {
   prepare();
 }
 
-template<> void ArtUnwindcTracer<kVersion>::stopTracing() {
-}
+template <>
+void ArtUnwindcTracer<kVersion>::stopTracing() {}
 
 } // namespace profiler
 } // namespace profilo

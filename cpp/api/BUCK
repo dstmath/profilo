@@ -1,6 +1,10 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/android:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
+
+APP_SPECIFIC_IS_ASSET_FLAG = {
+    "default": True,
+    "instagram": True,
+}
 
 fb_xplat_cxx_library(
     name = "external_api",
@@ -11,15 +15,26 @@ fb_xplat_cxx_library(
     exported_headers = [
         "ExternalApi.h",
     ],
+    can_be_asset = APP_SPECIFIC_IS_ASSET_FLAG.get(read_config("fbandroid", "app_mode", "default")),
     force_static = True,
     link_style = "shared",
     preferred_linkage = "static",
-    supported_platforms_regex = "^android-(arm|armv7|arm64|x86)$",
+    supported_platforms_regex = "^android-(arm|armv7|arm64|x86|x86_64)$",
     visibility = [
         "PUBLIC",
     ],
     deps = [
         ":external_api_glue",
+    ],
+)
+
+fb_xplat_cxx_library(
+    name = "external_api_header",
+    header_namespace = "profilo",
+    exported_headers = ["ExternalApi.h"],
+    force_static = True,
+    visibility = [
+        profilo_path("..."),
     ],
 )
 
@@ -32,9 +47,10 @@ fb_xplat_cxx_library(
     exported_headers = [
         "ExternalApiGlue.h",
     ],
+    can_be_asset = APP_SPECIFIC_IS_ASSET_FLAG.get(read_config("fbandroid", "app_mode", "default")),
     link_style = "shared",
     soname = "libprofiloextapi.$(ext)",
-    supported_platforms_regex = "^android-(arm|armv7|arm64|x86)$",
+    supported_platforms_regex = "^android-(arm|armv7|arm64|x86|x86_64)$",
     visibility = [
         profilo_path("..."),
     ],
@@ -54,6 +70,7 @@ fb_xplat_cxx_library(
         ":external_api_glue",
         profilo_path("cpp:constants"),
         profilo_path("cpp:providers"),
+        profilo_path("cpp/profiler:external_tracer_manager"),
         profilo_path("cpp/logger:logger"),
         profilo_path("deps/fbjni:fbjni"),
     ],

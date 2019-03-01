@@ -82,7 +82,7 @@ public class TraceControlTest {
 
     mController = mock(TraceController.class);
 
-    when(mController.evaluateConfig(anyObject(), same(mControllerConfig)))
+    when(mController.evaluateConfig(anyLong(), anyObject(), same(mControllerConfig)))
         .thenReturn(PROVIDER_TEST);
     when(mController.contextsEqual(anyInt(), anyObject(), anyInt(), anyObject()))
         .thenReturn(true);
@@ -125,7 +125,7 @@ public class TraceControlTest {
     assertThat(currContext.controller).isEqualTo(TRACE_CONTROLLER_ID);
     assertThat(currContext.controllerObject).isEqualTo(mController);
     assertThat(currContext.context).isEqualTo(mTraceContext.context);
-    assertThat(currContext.intContext).isEqualTo(mTraceContext.intContext);
+    assertThat(currContext.longContext).isEqualTo(mTraceContext.longContext);
     assertThat(currContext.enabledProviders).isEqualTo(mTraceContext.enabledProviders);
     assertThat(currContext.cpuSamplingRateMs).isEqualTo(mTraceContext.cpuSamplingRateMs);
   }
@@ -133,7 +133,7 @@ public class TraceControlTest {
   @Test
   public void testStartFiltersOutControllers() {
     TraceController secondController = mock(TraceController.class);
-    when(secondController.evaluateConfig(anyObject(), same(mControllerConfig)))
+    when(secondController.evaluateConfig(anyLong(), anyObject(), same(mControllerConfig)))
         .thenReturn(PROVIDER_TEST);
     when(secondController.contextsEqual(anyInt(), anyObject(), anyInt(), anyObject()))
         .thenReturn(true);
@@ -157,7 +157,7 @@ public class TraceControlTest {
   @Test
   public void testNonConfigurableControllerTraceStart() {
     TraceController noConfController = mock(TraceController.class);
-    when(noConfController.evaluateConfig(anyObject(), same(mControllerConfig)))
+    when(noConfController.evaluateConfig(anyLong(), anyObject(), same(mControllerConfig)))
         .thenReturn(PROVIDER_TEST);
     when(noConfController.contextsEqual(anyInt(), anyObject(), anyInt(), anyObject()))
         .thenReturn(true);
@@ -170,7 +170,7 @@ public class TraceControlTest {
   @Test
   public void testStartFromInsideTraceFails() {
     TraceController secondController = mock(TraceController.class);
-    when(secondController.evaluateConfig(anyObject(), same(mControllerConfig)))
+    when(secondController.evaluateConfig(anyLong(), anyObject(), same(mControllerConfig)))
         .thenReturn(PROVIDER_TEST);
     when(secondController.contextsEqual(anyInt(), anyObject(), anyInt(), anyObject()))
         .thenReturn(true);
@@ -187,13 +187,13 @@ public class TraceControlTest {
 
   @Test
   public void testStartChecksController() {
-    when(mController.evaluateConfig(anyObject(), any(ControllerConfig.class)))
+    when(mController.evaluateConfig(anyLong(), anyObject(), any(ControllerConfig.class)))
         .thenReturn(0);
     assertThat(mTraceControl.startTrace(TRACE_CONTROLLER_ID, 0, new Object(), 0))
         .isFalse();
     assertNotTracing();
 
-    when(mController.evaluateConfig(anyObject(), any(ControllerConfig.class)))
+    when(mController.evaluateConfig(anyLong(), anyObject(), any(ControllerConfig.class)))
         .thenReturn(PROVIDER_TEST);
     assertThat(mTraceControl.startTrace(TRACE_CONTROLLER_ID, 0, new Object(), 0))
         .isTrue();
@@ -267,8 +267,8 @@ public class TraceControlTest {
 
   @Test
   public void testMultipleTracesStartStop() {
-    int flag1 = 1;
-    int flag2 = 2;
+    long flag1 = 1;
+    long flag2 = 2;
     when(mController.contextsEqual(eq(flag1), any(), eq(flag2), any())).thenReturn(false);
     when(mController.contextsEqual(eq(flag2), any(), eq(flag1), any())).thenReturn(false);
 
@@ -282,8 +282,8 @@ public class TraceControlTest {
     mTraceControl.stopTrace(TRACE_CONTROLLER_ID, null, flag2);
     ArgumentCaptor<TraceContext> contextCaptor = ArgumentCaptor.forClass(TraceContext.class);
     verify(mTraceControlHandler, times(2)).onTraceStop(contextCaptor.capture());
-    assertThat(contextCaptor.getAllValues().get(0).intContext).isEqualTo(flag1);
-    assertThat(contextCaptor.getAllValues().get(1).intContext).isEqualTo(flag2);
+    assertThat(contextCaptor.getAllValues().get(0).longContext).isEqualTo(flag1);
+    assertThat(contextCaptor.getAllValues().get(1).longContext).isEqualTo(flag2);
     assertNotTracing();
   }
 

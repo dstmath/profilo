@@ -1,19 +1,12 @@
-load("//build_defs:fb_core_android_library.bzl", "fb_core_android_library")
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:profilo_sample_app.bzl", "profilo_sample_app")
+load("//tools/build_defs:fb_native_wrapper.bzl", "fb_native")
+load("//tools/build_defs/android:fb_core_android_library.bzl", "fb_core_android_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
+load("//tools/build_defs/oss:profilo_sample_app.bzl", "profilo_sample_app")
 
-keystore(
+fb_native.keystore(
     name = "keystore",
     properties = "sample.keystore.properties",
     store = "sample.keystore",
-    visibility = [
-        profilo_path("..."),
-    ],
-)
-
-android_manifest(
-    name = "manifest",
-    skeleton = "AndroidManifest.xml",
     visibility = [
         profilo_path("..."),
     ],
@@ -24,7 +17,7 @@ SAMPLE_LIB_SRCS = [
     "WorkloadThread.java",
 ]
 
-android_build_config(
+fb_native.android_build_config(
     name = "sample-buildconfig-dummy",
     package = "com.facebook.profilo",
     values = [
@@ -55,16 +48,26 @@ ACTIVITY_SRCS = glob(
     exclude = SAMPLE_LIB_SRCS,
 )
 
+fb_native.export_file(
+    name = "aar-manifest",
+    src = "AndroidManifest-aar.xml",
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
 profilo_sample_app(
     srcs = ACTIVITY_SRCS,
-    manifest = "AndroidManifest.xml",
+    aar_manifest = ":aar-manifest",
+    app_manifest = "AndroidManifest-sample.xml",
     providers = None,
 )
 
 # Referred to by open source buckconfig, don't forget to update it there.
 profilo_sample_app(
     srcs = ACTIVITY_SRCS,
-    manifest = "AndroidManifest.xml",
+    aar_manifest = ":aar-manifest",
+    app_manifest = "AndroidManifest-sample.xml",
     providers = [
         "atrace",
         "stacktrace",
@@ -75,7 +78,8 @@ profilo_sample_app(
 
 profilo_sample_app(
     srcs = ACTIVITY_SRCS,
-    manifest = "AndroidManifest.xml",
+    aar_manifest = ":aar-manifest",
+    app_manifest = "AndroidManifest-sample.xml",
     providers = [
         "atrace",
         "processmetadata",
@@ -89,7 +93,8 @@ profilo_sample_app(
 [
     profilo_sample_app(
         srcs = ACTIVITY_SRCS,
-        manifest = "AndroidManifest.xml",
+        aar_manifest = ":aar-manifest",
+        app_manifest = "AndroidManifest-sample.xml",
         providers = [
             provider,
         ],

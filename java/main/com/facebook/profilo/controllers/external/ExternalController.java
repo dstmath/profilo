@@ -32,12 +32,12 @@ public class ExternalController implements TraceController {
   }
 
   @Override
-  public int evaluateConfig(@Nullable Object context, ControllerConfig ignored) {
+  public int evaluateConfig(long longContext, @Nullable Object context, ControllerConfig ignored) {
     return getConfigFromContext(context).providers;
   }
 
   @Override
-  public int getCpuSamplingRateMs(Object context, ControllerConfig ignored) {
+  public int getCpuSamplingRateMs(long longContext, Object context, ControllerConfig ignored) {
     return getConfigFromContext(context).cpuSamplingRateMs;
   }
 
@@ -50,7 +50,8 @@ public class ExternalController implements TraceController {
   }
 
   @Override
-  public boolean contextsEqual(int fstInt, @Nullable Object fst, int sndInt, @Nullable Object snd) {
+  public boolean contextsEqual(
+      long fstLong, @Nullable Object fst, long sndLong, @Nullable Object snd) {
     // Always honor stop requests.
 
     return true;

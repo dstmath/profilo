@@ -73,6 +73,7 @@ public class FileManager {
 
   private static final String TAG = "FileManager";
 
+  static final String PROFILO_FOLDER = "profilo";
   static final String UPLOAD_FOLDER = "upload";
   static final String LOG_SUFFIX = ".log";
   static final String ZIP_SUFFIX = ".zip";
@@ -80,6 +81,7 @@ public class FileManager {
   public static final String UNTRIMMABLE_PREFIX = "override-";
   private int mMaxArchivedTraces = 0;
   private long mMaxScheduledTracesAgeMillis = 0;
+  private boolean mHasMigrated = false;
 
   // Visible for testing
   FileManagerStatistics mFileManagerStatistics =
@@ -104,19 +106,59 @@ public class FileManager {
         }
       };
 
-  private final File mBaseFolder;
+  private File mBaseFolder;
+  private File mUploadFolder;
+  private Context mContext;
 
-  public FileManager(File folder) {
-    mBaseFolder = folder;
+  public FileManager(Context context, @Nullable File folder) {
+    mContext = context.getApplicationContext();
+    if (mContext == null) {
+      // Not ideal, but we need to know where to store our stuff
+      mContext = context;
+    }
+    File cacheFolder = getBaseFolder();
+    mBaseFolder = cacheFolder;
+
+    // Default location ("cache/profilo") or user-supplied location
+    File traceFolder = folder != null ? folder : new File(cacheFolder, PROFILO_FOLDER);
+    if (traceFolder.exists() || traceFolder.mkdirs()) {
+      // If unable to create the folder, fallback to default
+      mBaseFolder = traceFolder;
+    }
+    mUploadFolder = new File(mBaseFolder, UPLOAD_FOLDER);
   }
 
-  public FileManager(Context context) {
-    this(getBaseFolder(context));
+  // Move traces that potentially live in the old location (getCacheDir()
+  // or getFilesDir()) into the new location ([cache|files]/profilo or
+  // a custom location).
+  private void migrateOldFiles() {
+    List<File> oldFiles = new ArrayList<>();
+
+    File oldUploadFolder = new File(getBaseFolder(), UPLOAD_FOLDER);
+
+    oldFiles.addAll(getFiles(oldUploadFolder, UNTRIMMABLE_FILES_FILTER));
+    oldFiles.addAll(getFiles(oldUploadFolder, TRIMMABLE_FILES_FILTER));
+
+    if (oldFiles.isEmpty()) {
+      // Nothing to migrate
+      return;
+    }
+
+    File uploadFolder = getUploadFolder();
+    for (File oldFile : oldFiles) {
+      oldFile.renameTo(new File(uploadFolder, oldFile.getName()));
+    }
+
+    // No need to keep around the old upload folder
+    oldUploadFolder.delete();
+
+    // No need to attempt to migrate again
+    mHasMigrated = true;
   }
 
-  private static File getBaseFolder(Context context) {
-    File internalCacheDir = context.getCacheDir();
-    File internalDataDir = context.getFilesDir();
+  private File getBaseFolder() {
+    File internalCacheDir = mContext.getCacheDir();
+    File internalDataDir = mContext.getFilesDir();
 
     if (internalCacheDir != null &&
         (internalCacheDir.exists() || internalCacheDir.mkdirs())) {
@@ -159,6 +201,11 @@ public class FileManager {
         mFileManagerStatistics.addedFilesToUpload++;
       } else {
         mFileManagerStatistics.errorsMove++;
+      }
+
+      // Migrate files in the old upload directory to the new one
+      if (!mHasMigrated) {
+        migrateOldFiles();
       }
 
       trimFolderByAge(uploadFolder, mBaseFolder, mMaxScheduledTracesAgeMillis);
@@ -218,6 +265,7 @@ public class FileManager {
 
   public Iterable<File> getAllFiles() {
     List<File> allFiles = new ArrayList<>();
+
     allFiles.addAll(getFiles(getUploadFolder(), UNTRIMMABLE_FILES_FILTER));
     allFiles.addAll(getFiles(getUploadFolder(), TRIMMABLE_FILES_FILTER));
     allFiles.addAll(getFiles(getFolder(), UNTRIMMABLE_FILES_FILTER));
@@ -247,8 +295,8 @@ public class FileManager {
     return mBaseFolder;
   }
 
-  private File getUploadFolder() {
-    return new File(mBaseFolder, UPLOAD_FOLDER);
+  public File getUploadFolder() {
+    return mUploadFolder;
   }
 
   private void trimFolderByFileCount(

@@ -23,7 +23,6 @@ import com.facebook.profilo.core.ProfiloConstants;
 import com.facebook.profilo.entries.EntryType;
 import com.facebook.profilo.ipc.TraceContext;
 import com.facebook.profilo.logger.Logger;
-import java.io.File;
 import java.util.List;
 
 public final class ProcessMetadataProvider extends BaseTraceProvider {
@@ -35,12 +34,12 @@ public final class ProcessMetadataProvider extends BaseTraceProvider {
   }
 
   @Override
-  protected void onTraceStarted(TraceContext context, File extraDataFolder) {
+  protected void onTraceStarted(TraceContext context, ExtraDataFileProvider dataFileProvider) {
     logProcessList();
   }
 
   @Override
-  protected void onTraceEnded(TraceContext context, File extraDataFolder) {
+  protected void onTraceEnded(TraceContext context, ExtraDataFileProvider dataFileProvider) {
     logProcessList();
   }
 
@@ -55,12 +54,27 @@ public final class ProcessMetadataProvider extends BaseTraceProvider {
     return EVERY_PROVIDER_CHANGE;
   }
 
+  @Override
+  protected int getTracingProviders() {
+    return 0;
+  }
+
   private void logProcessList() {
-    ActivityManager am = (ActivityManager) mContext.getSystemService(Context.ACTIVITY_SERVICE);
-    if (am == null) {
+    List<ActivityManager.RunningAppProcessInfo> infos;
+    try {
+      ActivityManager am = (ActivityManager) mContext.getSystemService(Context.ACTIVITY_SERVICE);
+      if (am == null) {
+        return;
+      }
+      infos = am.getRunningAppProcesses();
+    } catch (Throwable ex) {
+      // IPC calls can fail for seemingly random reasons. Various layers in the
+      // framework end up wrapping the exceptions, so we can't look for the
+      // specific type.
+      // In any case, there's nothing we can do here.
       return;
     }
-    List<ActivityManager.RunningAppProcessInfo> infos = am.getRunningAppProcesses();
+
     String processes = null;
     if (infos != null) {
       StringBuilder sb = new StringBuilder();
@@ -77,12 +91,30 @@ public final class ProcessMetadataProvider extends BaseTraceProvider {
     if (processes == null || processes.isEmpty()) {
       processes = "PROCESS_METADATA_PROVIDER_FAILED_TO_GET_PROCESS_LIST";
     }
-    Logger.writeEntryWithStringWithNoMatch(
-        ProfiloConstants.PROVIDER_PROFILO_SYSTEM,
-        EntryType.PROCESS_LIST,
-        0,
-        0,
-        "processes",
+    int returnedMatchID =
+        Logger.writeStandardEntry(
+            ProfiloConstants.NONE,
+            Logger.SKIP_PROVIDER_CHECK | Logger.FILL_TIMESTAMP | Logger.FILL_TID,
+            EntryType.PROCESS_LIST,
+            ProfiloConstants.NONE,
+            ProfiloConstants.NONE,
+            ProfiloConstants.NONE,
+            ProfiloConstants.NONE,
+            ProfiloConstants.NONE);
+    if ("processes" != null) {
+      returnedMatchID =
+          Logger.writeBytesEntry(
+              ProfiloConstants.NONE,
+              Logger.SKIP_PROVIDER_CHECK,
+              EntryType.STRING_KEY,
+              returnedMatchID,
+              "processes");
+    }
+    Logger.writeBytesEntry(
+        ProfiloConstants.NONE,
+        Logger.SKIP_PROVIDER_CHECK,
+        EntryType.STRING_VALUE,
+        returnedMatchID,
         processes);
   }
 }

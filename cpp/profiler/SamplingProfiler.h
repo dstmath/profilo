@@ -19,7 +19,9 @@
 #include <semaphore.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 #if !defined(__GLIBCXX__)
 #include <__threading_support>
@@ -33,14 +35,13 @@
 #include "profilo/LogEntry.h"
 #include "util/ProcFs.h"
 
-
 namespace fbjni = facebook::jni;
 
 namespace facebook {
 namespace profilo {
 namespace profiler {
 
-enum StackSlotState: uint8_t {
+enum StackSlotState : uint8_t {
   FREE = 1,
   BUSY = 2,
   FULL = 3,
@@ -53,6 +54,8 @@ struct StackSlot {
   jmp_buf sig_jmp_buf;
   uint32_t profilerType;
   int64_t frames[MAX_STACK_DEPTH]; // frame pointer addresses
+  char const* method_names[MAX_STACK_DEPTH];
+  char const* class_descriptors[MAX_STACK_DEPTH];
 #ifdef PROFILER_COLLECT_PC
   u2 pcs[MAX_STACK_DEPTH];
 #endif
@@ -64,7 +67,7 @@ struct ProfileState {
   pid_t processId;
   int availableTracers;
   int currentTracers;
-  std::unordered_map<int32_t, std::unique_ptr<BaseTracer>> tracersMap;
+  std::unordered_map<int32_t, std::shared_ptr<BaseTracer>> tracersMap;
   StackSlot stacks[MAX_STACKS_COUNT];
   std::atomic<uint32_t> currentSlot;
   // Error stats
@@ -79,16 +82,25 @@ struct ProfileState {
   sem_t slotsCounterSem;
   std::atomic_bool isLoggerLoopDone;
 
-  // Allow targeting individual thread
-  int32_t targetThread;
-  bool singleThreadMode;
+  bool wallClockModeEnabled;
   int samplingRateUs;
   std::atomic_bool enoughStacks;
+
+  // When in "wall clock mode", we can optionally whitelist additional threads
+  // to profile as well.
+  std::unordered_set<int32_t> whitelistedThreads;
+  // Guards whitelistedThreads.
+  std::mutex whitelistMtx;
+
+  // If a secondary trace starts, we need to tell the logger loop to clear
+  // its cache of logged frames, so that the new trace won't miss any symbols
+  std::atomic_bool resetFrameworkSymbols;
 
   ProfileState() {
     int ret;
     if ((ret = pthread_key_create(&threadIsProfilingKey, nullptr))) {
-      throw std::system_error(ret, std::system_category(), "pthread_key_create");
+      throw std::system_error(
+          ret, std::system_category(), "pthread_key_create");
     }
   }
 };
@@ -100,10 +112,13 @@ bool initialize(fbjni::alias_ref<jobject> ref, jint available_tracers);
 void loggerLoop(fbjni::alias_ref<jobject> obj);
 void stopProfiling(fbjni::alias_ref<jobject> obj);
 bool startProfiling(
-  fbjni::alias_ref<jobject> obj,
-  int requested_providers,
-  int sampling_rate_ms,
-  int targetThread);
+    fbjni::alias_ref<jobject> obj,
+    int requested_providers,
+    int sampling_rate_ms,
+    bool wall_clock_mode_enabled);
+void addToWhitelist(fbjni::alias_ref<jobject> obj, int targetThread);
+void removeFromWhitelist(fbjni::alias_ref<jobject> obj, int targetThread);
+void resetFrameworkNamesSet(fbjni::alias_ref<jobject> obj);
 
 } // namespace profiler
 } // namespace profilo

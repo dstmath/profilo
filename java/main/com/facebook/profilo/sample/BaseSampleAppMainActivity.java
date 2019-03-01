@@ -27,6 +27,7 @@ import android.widget.ToggleButton;
 import com.facebook.profilo.BuildConfig;
 import com.facebook.profilo.controllers.external.ExternalController;
 import com.facebook.profilo.controllers.external.api.ExternalTraceControl;
+import com.facebook.profilo.core.BaseTraceProvider;
 import com.facebook.profilo.core.ProvidersRegistry;
 import com.facebook.profilo.core.TraceController;
 import com.facebook.profilo.core.TraceOrchestrator;
@@ -80,11 +81,12 @@ public abstract class BaseSampleAppMainActivity extends Activity {
 
     TraceOrchestrator.initialize(
         this.getApplicationContext(),
-        null,
+        null, /* ConfigProvider */
         TraceOrchestrator.MAIN_PROCESS_NAME,
-        /* isMainProcess */ true,
+        true, /* isMainProcess */
         calculateProviders(),
-        controllers);
+        controllers,
+        null /* traceFolder */);
   }
 
   private void createLayout() {
@@ -124,14 +126,13 @@ public abstract class BaseSampleAppMainActivity extends Activity {
     mProgressBar = progressBar;
   }
 
-  private TraceOrchestrator.TraceProvider[] calculateProviders() {
-      TraceOrchestrator.TraceProvider[] result =
-          new TraceOrchestrator.TraceProvider[BuildConfig.PROVIDERS.length];
-      int idx = 0;
-      for (String provider : BuildConfig.PROVIDERS) {
-        result[idx++] = createProvider(provider);
-      }
-      return result;
+  private BaseTraceProvider[] calculateProviders() {
+    BaseTraceProvider[] result = new BaseTraceProvider[BuildConfig.PROVIDERS.length];
+    int idx = 0;
+    for (String provider : BuildConfig.PROVIDERS) {
+      result[idx++] = createProvider(provider);
+    }
+    return result;
     }
 
   protected int getProvidersToEnable() {
@@ -146,7 +147,7 @@ public abstract class BaseSampleAppMainActivity extends Activity {
     return ProvidersRegistry.getBitMaskFor(validProviders);
   }
 
-  protected TraceOrchestrator.TraceProvider createProvider(String providerName) {
+  protected BaseTraceProvider createProvider(String providerName) {
     throw new RuntimeException("Could not map provider " + providerName);
   }
 }

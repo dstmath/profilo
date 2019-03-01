@@ -15,32 +15,13 @@
  */
 
 #include <time.h>
-#include <plthooktestdata/meaningoflife.h>
+
+#include <linkertestdata/var.h>
 
 clock_t call_clock() {
   return clock();
 }
 
-int ask() {
-  return meaning_of_life;
-}
-
-double call_nice1(int one) {
-  return nice1(one);
-}
-
-int call_nice2(int one, double two) {
-  return nice2(one, two);
-}
-
-void call_evil1(struct large one, int two, void (*cb)(struct large*, int, void*), void* unk) {
-  evil1(one, two, cb, unk);
-}
-
-void* call_evil2(int one, struct large two, void (*cb)(struct large*, int, void*), void* unk) {
-  return evil2(one, two, cb, unk);
-}
-
-struct large call_evil3(int one, int two, int three, struct large four, void (*cb)(struct large*, int, void*), void* unk) {
-  return evil3(one, two, three, four, cb, unk);
+int get_var() {
+  return var;
 }

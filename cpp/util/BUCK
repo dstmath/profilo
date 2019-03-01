@@ -1,6 +1,5 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/android:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
 
 UTIL_EXPORTED_HEADERS = [
     "common.h",
@@ -33,6 +32,7 @@ fb_xplat_cxx_library(
         profilo_path("facebook/cpp/..."),
     ],
     deps = [
+        profilo_path("deps/plthooks:plthooks"),
         profilo_path("deps/linker:linker"),
     ],
 )

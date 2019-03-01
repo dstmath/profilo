@@ -1,15 +1,16 @@
-# BUILD FILE SYNTAX: SKYLARK
-load("//buck_imports:profilo_path.bzl", "profilo_path")
-load("//build_defs:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/android:fb_xplat_cxx_library.bzl", "fb_xplat_cxx_library")
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_path")
 
-SYSTEM_COUNTERS_EXPORTED_HEADERS = ["SystemCounterThread.h"]
+SYSTEM_COUNTERS_EXPORTED_HEADERS = [
+    "ProcessCounters.h",
+    "SystemCounterThread.h",
+    "ThreadCounters.h",
+    "common.h",
+]
 
 fb_xplat_cxx_library(
     name = "systemcounters",
-    srcs = [
-        "SystemCounterThread.cpp",
-        "jni.cpp",
-    ],
+    srcs = glob(["*.cpp"]),
     headers = glob(
         ["*.h"],
         exclude = SYSTEM_COUNTERS_EXPORTED_HEADERS,
@@ -23,7 +24,12 @@ fb_xplat_cxx_library(
         "-std=gnu++14",
     ],
     soname = "libprofilo_systemcounters.$(ext)",
+    tests = [
+        profilo_path("cpp/test/systemcounters:processcounters"),
+        profilo_path("cpp/test/systemcounters:threadcounters"),
+    ],
     visibility = [
+        profilo_path("cpp/test/systemcounters/..."),
         profilo_path("java/main/com/facebook/profilo/provider/systemcounters:"),
     ],
     deps = [

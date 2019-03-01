@@ -1,4 +1,4 @@
-// @generated SignedSource<<9fa634e6215470aef9a398af6d96c188>>
+// @generated SignedSource<<cad474c206b9c09c3218c8a398974cbc>>
 
 #include <stdexcept>
 #include <profilo/entries/EntryType.h>
@@ -15,6 +15,8 @@ const char* to_string(EntryType type) {
     case UI_UPDATE_START: return "UI_UPDATE_START";
     case UI_UPDATE_END: return "UI_UPDATE_END";
     case NET_ADDED: return "NET_ADDED";
+    case NET_CANCEL: return "NET_CANCEL";
+    case NET_CHANGEPRI: return "NET_CHANGEPRI";
     case NET_ERROR: return "NET_ERROR";
     case NET_END: return "NET_END";
     case NET_RESPONSE: return "NET_RESPONSE";
@@ -83,8 +85,6 @@ const char* to_string(EntryType type) {
     case MAJOR_FAULT: return "MAJOR_FAULT";
     case YARN_LOST_RECORDS: return "YARN_LOST_RECORDS";
     case CLASS_LOAD: return "CLASS_LOAD";
-    case NATIVE_STACK_FRAME: return "NATIVE_STACK_FRAME";
-    case NATIVE_LIB_MAPPING: return "NATIVE_LIB_MAPPING";
     case JAVASCRIPT_STACK_FRAME: return "JAVASCRIPT_STACK_FRAME";
     case MESSAGE_START: return "MESSAGE_START";
     case MESSAGE_END: return "MESSAGE_END";
@@ -93,6 +93,7 @@ const char* to_string(EntryType type) {
     case HTTP2_FRAME_HEADER: return "HTTP2_FRAME_HEADER";
     case HTTP2_WINDOW_UPDATE: return "HTTP2_WINDOW_UPDATE";
     case HTTP2_PRIORITY: return "HTTP2_PRIORITY";
+    case HTTP2_EGRESS_FRAME_HEADER: return "HTTP2_EGRESS_FRAME_HEADER";
     case PROCESS_LIST: return "PROCESS_LIST";
     case IO_START: return "IO_START";
     case IO_END: return "IO_END";
@@ -100,6 +101,8 @@ const char* to_string(EntryType type) {
     case CLASS_LOAD_START: return "CLASS_LOAD_START";
     case CLASS_LOAD_END: return "CLASS_LOAD_END";
     case CLASS_LOAD_FAILED: return "CLASS_LOAD_FAILED";
+    case STRING_NAME: return "STRING_NAME";
+    case JAVA_FRAME_NAME: return "JAVA_FRAME_NAME";
     default: throw std::invalid_argument("Unknown entry type");
   }
 }
